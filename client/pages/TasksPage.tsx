@@ -38,21 +38,20 @@ import {
   Archive,
   TrendingUp,
   Users,
+  Copy,
+  Loader,
 } from "lucide-react";
+import { supabase, Task as TaskType, Complaint } from "../lib/supabase";
+import { toast } from "../hooks/use-toast";
 
-interface Task {
-  id: string;
-  title: string;
-  description: string;
-  priority: "low" | "medium" | "high" | "urgent";
-  status: "in-progress" | "flagged" | "completed" | "approved" | "invoiced" | "paid" | "archived";
-  category: "operations" | "service" | "training" | "maintenance";
-  assignedTo: string;
-  dueDate: string;
-  createdAt: string;
-  estimatedTime: string;
-  assignmentType: "internal" | "external";
-  checklist: string[];
+interface TaskUI extends TaskType {
+  // Extended UI properties for display
+  category?: "operations" | "service" | "training" | "maintenance";
+  assignedTo?: string;
+  dueDate?: string;
+  createdAt?: string;
+  estimatedTime?: string;
+  checklist?: string[];
 }
 
 interface Message {
@@ -80,8 +79,10 @@ const TasksPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [selectedTask, setSelectedTask] = useState<string | null>(null);
+  const [selectedComplaint, setSelectedComplaint] = useState<Complaint | null>(null);
   const [chatMessage, setChatMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -96,6 +97,12 @@ const TasksPage: React.FC = () => {
     paymentTerms: "",
   });
 
+  // Data state
+  const [tasks, setTasks] = useState<TaskUI[]>([]);
+  const [complaints, setComplaints] = useState<Complaint[]>([]);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [currentUser, setCurrentUser] = useState<any>(null);
+
   // Sync URL with tab changes
   useEffect(() => {
     const newTab = getTabFromPath();
@@ -109,55 +116,50 @@ const TasksPage: React.FC = () => {
     else if (tab === "live-chat") navigate("/tasks/chat");
   };
 
-  // Mock tasks data
-  const [tasks, setTasks] = useState<Task[]>([
-    {
-      id: "TASK-001",
-      title: "Fix HVAC System in Guest Wing A",
-      description: "Air conditioning not working properly in rooms 301-310",
-      priority: "urgent",
-      status: "in-progress",
-      category: "maintenance",
-      assignedTo: "John Smith - Maintenance",
-      dueDate: "2024-01-16",
-      createdAt: "2024-01-15T09:00:00",
-      estimatedTime: "3 hours",
-      assignmentType: "internal",
-      checklist: ["Inspect unit", "Replace filter", "Test system", "Document fix"],
-    },
-    {
-      id: "TASK-002",
-      title: "Deep Clean Banquet Hall",
-      description: "Post-event cleanup and deep cleaning of main banquet hall",
-      priority: "high",
-      status: "completed",
-      category: "operations",
-      assignedTo: "Sarah Johnson - Housekeeping",
-      dueDate: "2024-01-15",
-      createdAt: "2024-01-14T14:00:00",
-      estimatedTime: "4 hours",
-      assignmentType: "internal",
-      checklist: ["Vacuum", "Polish floors", "Clean fixtures", "Restock supplies"],
-    },
-  ]);
+  // Load user, complaints, and tasks from Supabase
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        setIsLoading(true);
 
-  // Mock messages data
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: "MSG-001",
-      taskId: "TASK-001",
-      author: "Manager",
-      content: "Has the HVAC unit been inspected yet?",
-      timestamp: "2024-01-15T10:30:00",
-    },
-    {
-      id: "MSG-002",
-      taskId: "TASK-001",
-      author: "John Smith",
-      content: "Yes, inspection is complete. The compressor needs replacement.",
-      timestamp: "2024-01-15T11:00:00",
-    },
-  ]);
+        // Get current user
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        setCurrentUser(user);
+
+        // Load complaints (for managers to convert to tasks)
+        const { data: complaintsData, error: complaintsError } = await supabase
+          .from("complaints")
+          .select("*")
+          .eq("status", "open")
+          .order("created_at", { ascending: false });
+
+        if (complaintsError) throw complaintsError;
+        setComplaints(complaintsData || []);
+
+        // Load tasks
+        const { data: tasksData, error: tasksError } = await supabase
+          .from("tasks")
+          .select("*")
+          .order("created_at", { ascending: false });
+
+        if (tasksError) throw tasksError;
+        setTasks(tasksData || []);
+      } catch (error) {
+        console.error("Error loading data:", error);
+        toast({
+          title: "Error",
+          description: "Failed to load tasks and complaints",
+          variant: "destructive",
+        });
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadData();
+  }, []);
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
@@ -176,44 +178,39 @@ const TasksPage: React.FC = () => {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case "in-progress":
+      case "todo":
+        return "bg-yellow-50 border-l-4 border-l-yellow-500";
+      case "in_progress":
         return "bg-blue-50 border-l-4 border-l-blue-500";
-      case "flagged":
-        return "bg-red-50 border-l-4 border-l-red-500";
+      case "in_review":
+        return "bg-purple-50 border-l-4 border-l-purple-500";
       case "completed":
         return "bg-green-50 border-l-4 border-l-green-500";
-      case "approved":
-        return "bg-purple-50 border-l-4 border-l-purple-500";
-      case "invoiced":
-        return "bg-indigo-50 border-l-4 border-l-indigo-500";
-      case "paid":
-        return "bg-emerald-50 border-l-4 border-l-emerald-500";
-      case "archived":
-        return "bg-gray-50 border-l-4 border-l-gray-500";
       default:
-        return "";
+        return "bg-gray-50 border-l-4 border-l-gray-500";
     }
   };
 
   const getStatusIcon = (status: string) => {
     switch (status) {
-      case "in-progress":
+      case "todo":
+        return <AlertCircle className="h-4 w-4 text-yellow-600" />;
+      case "in_progress":
         return <Clock className="h-4 w-4 text-blue-600" />;
-      case "flagged":
-        return <Flag className="h-4 w-4 text-red-600" />;
+      case "in_review":
+        return <Flag className="h-4 w-4 text-purple-600" />;
       case "completed":
         return <CheckCircle className="h-4 w-4 text-green-600" />;
-      case "approved":
-        return <CheckCircle className="h-4 w-4 text-purple-600" />;
-      case "invoiced":
-        return <TrendingUp className="h-4 w-4 text-indigo-600" />;
-      case "paid":
-        return <CheckCircle className="h-4 w-4 text-emerald-600" />;
-      case "archived":
-        return <Archive className="h-4 w-4 text-gray-600" />;
       default:
         return null;
     }
+  };
+
+  const getStatusLabel = (status: string) => {
+    return status
+      .split("_")
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(" ");
   };
 
   const filteredTasks = tasks.filter((task) => {
@@ -228,17 +225,17 @@ const TasksPage: React.FC = () => {
 
   // Calculate dashboard stats
   const stats = {
-    open: tasks.filter((t) => ["in-progress", "flagged"].includes(t.status)).length,
+    open: tasks.filter((t) => t.status !== "completed").length,
     urgent: tasks.filter((t) => t.priority === "urgent").length,
     completedToday: tasks.filter(
       (t) =>
         t.status === "completed" &&
-        new Date(t.createdAt).toDateString() === new Date().toDateString()
+        new Date(t.created_at).toDateString() === new Date().toDateString()
     ).length,
     awaitingChat: messages.filter(
       (m) => {
         const task = tasks.find((t) => t.id === m.taskId);
-        return task && ["in-progress", "flagged"].includes(task.status);
+        return task && task.status !== "completed";
       }
     ).length,
   };
@@ -248,32 +245,43 @@ const TasksPage: React.FC = () => {
   };
 
   const handleCreateTask = async () => {
-    if (!formData.title || !formData.priority || !formData.category) {
-      alert("Please fill in all required fields");
+    if (!formData.title || !formData.priority || !formData.assignmentType) {
+      toast({
+        title: "Validation Error",
+        description: "Please fill in all required fields",
+        variant: "destructive",
+      });
       return;
     }
 
     setIsSubmitting(true);
     try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      // Create task in Supabase
+      const { data, error } = await supabase.from("tasks").insert([
+        {
+          complaint_id: selectedComplaint?.id || null,
+          title: formData.title,
+          description: formData.description,
+          priority: formData.priority as "low" | "medium" | "high" | "urgent",
+          status: "todo",
+          assigned_category: formData.assignmentType as "internal" | "external",
+          created_by: currentUser?.id,
+        },
+      ]);
 
-      const newTask: Task = {
-        id: `TASK-${String(tasks.length + 1).padStart(3, "0")}`,
-        title: formData.title,
-        description: formData.description,
-        priority: formData.priority as Task["priority"],
-        status: "in-progress",
-        category: formData.category as Task["category"],
-        assignedTo: formData.assignee || "Unassigned",
-        dueDate: formData.dueDate,
-        createdAt: new Date().toISOString(),
-        estimatedTime: formData.estimatedTime || "Not specified",
-        assignmentType: (formData.assignmentType || "internal") as "internal" | "external",
-        checklist: [],
-      };
+      if (error) throw error;
 
-      setTasks([...tasks, newTask]);
+      toast({
+        title: "Success",
+        description: "Task created successfully!",
+      });
+
+      // Reload tasks
+      const { data: tasksData } = await supabase
+        .from("tasks")
+        .select("*")
+        .order("created_at", { ascending: false });
+      setTasks(tasksData || []);
 
       // Reset form
       setFormData({
@@ -287,11 +295,28 @@ const TasksPage: React.FC = () => {
         estimatedTime: "",
         paymentTerms: "",
       });
-
-      alert("Task created successfully!");
+      setSelectedComplaint(null);
+    } catch (error) {
+      console.error("Error creating task:", error);
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to create task",
+        variant: "destructive",
+      });
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleSelectComplaint = (complaint: Complaint) => {
+    setSelectedComplaint(complaint);
+    // Prefill form with complaint data
+    setFormData((prev) => ({
+      ...prev,
+      title: `Address: ${complaint.complaint_type} - ${complaint.room_number}`,
+      description: complaint.description,
+      priority: complaint.priority as any,
+    }));
   };
 
   const handleSendMessage = () => {
@@ -419,6 +444,103 @@ const TasksPage: React.FC = () => {
 
           {/* New Task Tab */}
           <TabsContent value="new-task" className="space-y-6">
+            {/* Loading State */}
+            {isLoading && (
+              <Card className="border-2 border-dashed border-sheraton-gold bg-sheraton-cream">
+                <CardContent className="p-12 text-center">
+                  <div className="flex justify-center mb-6">
+                    <Loader className="h-12 w-12 text-sheraton-gold animate-spin" />
+                  </div>
+                  <p className="text-muted-foreground">Loading tasks and complaints...</p>
+                </CardContent>
+              </Card>
+            )}
+
+            {!isLoading && (
+              <>
+                {/* Open Complaints Section */}
+                {complaints.length > 0 && (
+              <Card className="border-orange-200 bg-orange-50/30">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <AlertCircle className="h-5 w-5 text-orange-600" />
+                    Open Complaints to Convert
+                  </CardTitle>
+                  <p className="text-sm text-muted-foreground mt-2">
+                    Select a complaint below to create a task to resolve it
+                  </p>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {complaints.map((complaint) => (
+                      <div
+                        key={complaint.id}
+                        className={`p-4 border rounded-lg cursor-pointer transition-all hover:shadow-md ${
+                          selectedComplaint?.id === complaint.id
+                            ? "border-orange-500 bg-orange-100 shadow-md"
+                            : "border-orange-200 hover:border-orange-400"
+                        }`}
+                        onClick={() => handleSelectComplaint(complaint)}
+                      >
+                        <div className="flex items-start justify-between mb-2">
+                          <h4 className="font-semibold text-sheraton-navy">
+                            {complaint.complaint_type}
+                          </h4>
+                          <Badge
+                            className={`capitalize ${
+                              complaint.priority === "urgent"
+                                ? "bg-red-500"
+                                : complaint.priority === "high"
+                                  ? "bg-orange-500"
+                                  : complaint.priority === "medium"
+                                    ? "bg-yellow-500"
+                                    : "bg-blue-500"
+                            }`}
+                          >
+                            {complaint.priority}
+                          </Badge>
+                        </div>
+                        <p className="text-sm text-gray-600 mb-2 line-clamp-2">
+                          {complaint.description}
+                        </p>
+                        <div className="text-xs text-gray-500 space-y-1">
+                          <p>
+                            <strong>Guest:</strong> {complaint.guest_name}
+                          </p>
+                          <p>
+                            <strong>Room:</strong> {complaint.room_number}
+                          </p>
+                          <p>
+                            <strong>Filed:</strong>{" "}
+                            {new Date(complaint.created_at).toLocaleDateString()}
+                          </p>
+                        </div>
+                        {selectedComplaint?.id === complaint.id && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="mt-3 w-full bg-orange-600 text-white hover:bg-orange-700"
+                          >
+                            <Copy className="h-3 w-3 mr-1" />
+                            Selected
+                          </Button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {complaints.length === 0 && (
+              <Card className="border-2 border-dashed border-orange-200 bg-orange-50/30">
+                <CardContent className="p-8 text-center">
+                  <AlertCircle className="h-10 w-10 text-orange-600 mx-auto mb-3" />
+                  <p className="text-muted-foreground">No open complaints at this time</p>
+                </CardContent>
+              </Card>
+            )}
+
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -611,6 +733,8 @@ const TasksPage: React.FC = () => {
                 </div>
               </CardContent>
             </Card>
+              </>
+            )}
           </TabsContent>
 
           {/* To do List Tab */}
@@ -635,13 +759,10 @@ const TasksPage: React.FC = () => {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Status</SelectItem>
-                    <SelectItem value="in-progress">In Progress</SelectItem>
-                    <SelectItem value="flagged">Flagged</SelectItem>
+                    <SelectItem value="todo">To Do</SelectItem>
+                    <SelectItem value="in_progress">In Progress</SelectItem>
+                    <SelectItem value="in_review">In Review</SelectItem>
                     <SelectItem value="completed">Completed</SelectItem>
-                    <SelectItem value="approved">Approved</SelectItem>
-                    <SelectItem value="invoiced">Invoiced</SelectItem>
-                    <SelectItem value="paid">Paid</SelectItem>
-                    <SelectItem value="archived">Archived</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -709,17 +830,27 @@ const TasksPage: React.FC = () => {
 
                     {/* Task Details Grid */}
                     <div className="space-y-3 mb-5 text-sm">
+                      {task.assignedTo && (
+                        <div className="flex justify-between items-center">
+                          <span className="text-gray-500 text-xs font-medium">ASSIGNED</span>
+                          <span className="font-semibold text-gray-900">{task.assignedTo}</span>
+                        </div>
+                      )}
+                      {task.dueDate && (
+                        <div className="flex justify-between items-center">
+                          <span className="text-gray-500 text-xs font-medium">DUE</span>
+                          <span className="font-semibold text-gray-900">{task.dueDate}</span>
+                        </div>
+                      )}
+                      {task.estimatedTime && (
+                        <div className="flex justify-between items-center">
+                          <span className="text-gray-500 text-xs font-medium">ESTIMATE</span>
+                          <span className="font-semibold text-gray-900">{task.estimatedTime}</span>
+                        </div>
+                      )}
                       <div className="flex justify-between items-center">
-                        <span className="text-gray-500 text-xs font-medium">ASSIGNED</span>
-                        <span className="font-semibold text-gray-900">{task.assignedTo}</span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-gray-500 text-xs font-medium">DUE</span>
-                        <span className="font-semibold text-gray-900">{task.dueDate}</span>
-                      </div>
-                      <div className="flex justify-between items-center">
-                        <span className="text-gray-500 text-xs font-medium">ESTIMATE</span>
-                        <span className="font-semibold text-gray-900">{task.estimatedTime}</span>
+                        <span className="text-gray-500 text-xs font-medium">CATEGORY</span>
+                        <span className="font-semibold text-gray-900">{task.assigned_category || "N/A"}</span>
                       </div>
                     </div>
 
@@ -729,10 +860,7 @@ const TasksPage: React.FC = () => {
                         variant="outline"
                         className="bg-white"
                       >
-                        {task.status
-                          .split("-")
-                          .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-                          .join(" ")}
+                        {getStatusLabel(task.status)}
                       </Badge>
                       <Button
                         size="sm"
