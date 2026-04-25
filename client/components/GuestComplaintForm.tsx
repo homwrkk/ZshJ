@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { supabase } from "../lib/supabase";
 import {
   Dialog,
   DialogContent,
@@ -25,6 +26,7 @@ import {
   X,
   CheckCircle,
   Send,
+  Loader,
 } from "lucide-react";
 
 interface ComplaintAttachment {
@@ -57,6 +59,8 @@ const GuestComplaintForm: React.FC<GuestComplaintFormProps> = ({
   const [isOpen, setIsOpen] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [complaint, setComplaint] = useState<GuestComplaint>({
     guestName: "",
     email: "",
@@ -132,7 +136,7 @@ const GuestComplaintForm: React.FC<GuestComplaintFormProps> = ({
     }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     // Validate required fields
@@ -143,34 +147,78 @@ const GuestComplaintForm: React.FC<GuestComplaintFormProps> = ({
       !complaint.complaintType ||
       !complaint.description.trim()
     ) {
-      alert("Please fill in all required fields");
+      setSubmitError("Please fill in all required fields");
       return;
     }
 
-    console.log("Complaint submitted:", complaint);
+    setIsSubmitting(true);
+    setSubmitError(null);
 
-    // Show success screen
-    setIsSubmitted(true);
+    try {
+      // Get current user (if authenticated)
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
-    // Call callback if provided
-    if (onComplaintSubmitted) {
-      onComplaintSubmitted(complaint);
+      // Prepare attachment data
+      const attachmentData = complaint.attachments.map((att) => ({
+        id: att.id,
+        name: att.name,
+        type: att.type,
+        size: att.size,
+      }));
+
+      // Insert complaint into database
+      const { error } = await supabase.from("complaints").insert([
+        {
+          user_id: user?.id || null,
+          guest_name: complaint.guestName,
+          email: complaint.email,
+          room_number: complaint.roomNumber,
+          complaint_type: complaint.complaintType,
+          description: complaint.description,
+          priority: complaint.priority,
+          status: "open",
+          attachments: attachmentData,
+        },
+      ]);
+
+      if (error) {
+        throw error;
+      }
+
+      console.log("Complaint submitted to database:", complaint);
+
+      // Show success screen
+      setIsSubmitted(true);
+
+      // Call callback if provided
+      if (onComplaintSubmitted) {
+        onComplaintSubmitted(complaint);
+      }
+
+      // Reset after 3 seconds
+      setTimeout(() => {
+        setIsSubmitted(false);
+        setIsOpen(false);
+        setComplaint({
+          guestName: "",
+          email: "",
+          roomNumber: "",
+          complaintType: "",
+          description: "",
+          priority: "medium",
+          attachments: [],
+        });
+      }, 3000);
+    } catch (error) {
+      console.error("Error submitting complaint:", error);
+      setSubmitError(
+        error instanceof Error ? error.message : "Failed to submit complaint. Please try again."
+      );
+    } finally {
+      setIsSubmitting(false);
     }
-
-    // Reset after 3 seconds
-    setTimeout(() => {
-      setIsSubmitted(false);
-      setIsOpen(false);
-      setComplaint({
-        guestName: "",
-        email: "",
-        roomNumber: "",
-        complaintType: "",
-        description: "",
-        priority: "medium",
-        attachments: [],
-      });
-    }, 3000);
   };
 
   return (
@@ -409,21 +457,42 @@ const GuestComplaintForm: React.FC<GuestComplaintFormProps> = ({
               )}
             </div>
 
+            {/* Error Display */}
+            {submitError && (
+              <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
+                <p className="text-red-800 text-sm flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4" />
+                  {submitError}
+                </p>
+              </div>
+            )}
+
             {/* Submit Button */}
             <div className="flex gap-3 justify-end">
               <Button
                 type="button"
                 variant="outline"
                 onClick={() => setIsOpen(false)}
+                disabled={isSubmitting}
               >
                 Cancel
               </Button>
               <Button
                 type="submit"
                 className="sheraton-gradient text-white"
+                disabled={isSubmitting}
               >
-                <Send className="h-4 w-4 mr-2" />
-                Submit Complaint
+                {isSubmitting ? (
+                  <>
+                    <Loader className="h-4 w-4 mr-2 animate-spin" />
+                    Submitting...
+                  </>
+                ) : (
+                  <>
+                    <Send className="h-4 w-4 mr-2" />
+                    Submit Complaint
+                  </>
+                )}
               </Button>
             </div>
           </form>
