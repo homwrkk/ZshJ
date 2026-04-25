@@ -801,35 +801,30 @@ const RegisterPage: React.FC = () => {
     <div className="space-y-6 text-center">
       <div className="mb-8">
         <h2 className="text-2xl font-bold text-sheraton-navy mb-2">
-          Complete Your Registration
+          Verify Your Account
         </h2>
         <p className="text-gray-600">
-          Review your information and complete the signup
+          We've sent a verification code to {formData.email}
         </p>
       </div>
 
       <div className="bg-sheraton-cream rounded-lg p-6">
         <h3 className="text-lg font-semibold text-sheraton-navy mb-4">
-          Account Information
+          Enter Verification Code
         </h3>
-        <div className="space-y-3 text-left">
-          <div className="flex justify-between">
-            <span className="text-gray-600">Email:</span>
-            <span className="font-medium">{formData.email}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-gray-600">Name:</span>
-            <span className="font-medium">{formData.firstName} {formData.lastName}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-gray-600">Account Type:</span>
-            <span className="font-medium capitalize">{formData.role?.replace("_", " ")}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-gray-600">Phone:</span>
-            <span className="font-medium">{formData.phone}</span>
-          </div>
+        <div className="flex justify-center space-x-2 mb-4">
+          {[1, 2, 3, 4, 5, 6].map((i) => (
+            <Input
+              key={i}
+              type="text"
+              maxLength={1}
+              className="w-12 h-12 text-center text-lg font-bold"
+            />
+          ))}
         </div>
+        <Button variant="outline" className="mt-4">
+          Resend Code
+        </Button>
       </div>
 
       {signupError && (
@@ -843,7 +838,10 @@ const RegisterPage: React.FC = () => {
       )}
 
       <div className="text-sm text-gray-600">
-        <p>Click "Complete Registration" below to create your account</p>
+        <p>Didn't receive the code? Check your spam folder or</p>
+        <button className="text-sheraton-navy underline hover:no-underline">
+          use a different email address
+        </button>
       </div>
     </div>
   );
