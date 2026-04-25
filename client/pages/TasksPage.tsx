@@ -21,8 +21,6 @@ import {
 import {
   Tabs,
   TabsContent,
-  TabsList,
-  TabsTrigger,
 } from "../components/ui/tabs";
 import {
   CheckSquare,
@@ -381,30 +379,43 @@ const TasksPage: React.FC = () => {
           </Card>
         </div>
 
-        <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3 bg-white border border-gray-200">
-            <TabsTrigger
-              value="new-task"
-              className="flex items-center gap-2 data-[state=active]:sheraton-gradient data-[state=active]:text-white"
+        {/* Navigation Tabs */}
+        <div className="flex justify-center mb-8">
+          <div className="bg-white rounded-lg shadow-md p-1 flex">
+            <button
+              onClick={() => handleTabChange("new-task")}
+              className={`px-6 py-3 rounded-md font-medium transition-colors ${
+                activeTab === "new-task"
+                  ? "bg-sheraton-gold text-sheraton-navy shadow-sm"
+                  : "text-gray-600 hover:text-sheraton-navy"
+              }`}
             >
-              <PlusCircle className="h-4 w-4" />
               New Task
-            </TabsTrigger>
-            <TabsTrigger
-              value="todo-list"
-              className="flex items-center gap-2 data-[state=active]:sheraton-gradient data-[state=active]:text-white"
+            </button>
+            <button
+              onClick={() => handleTabChange("todo-list")}
+              className={`px-6 py-3 rounded-md font-medium transition-colors ${
+                activeTab === "todo-list"
+                  ? "bg-sheraton-gold text-sheraton-navy shadow-sm"
+                  : "text-gray-600 hover:text-sheraton-navy"
+              }`}
             >
-              <CheckSquare className="h-4 w-4" />
-              Task List
-            </TabsTrigger>
-            <TabsTrigger
-              value="live-chat"
-              className="flex items-center gap-2 data-[state=active]:sheraton-gradient data-[state=active]:text-white"
+              To do list
+            </button>
+            <button
+              onClick={() => handleTabChange("live-chat")}
+              className={`px-6 py-3 rounded-md font-medium transition-colors ${
+                activeTab === "live-chat"
+                  ? "bg-sheraton-gold text-sheraton-navy shadow-sm"
+                  : "text-gray-600 hover:text-sheraton-navy"
+              }`}
             >
-              <MessageSquare className="h-4 w-4" />
-              Chat & Updates
-            </TabsTrigger>
-          </TabsList>
+              Live chat
+            </button>
+          </div>
+        </div>
+
+        <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
 
           {/* New Task Tab */}
           <TabsContent value="new-task" className="space-y-6">
