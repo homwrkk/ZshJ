@@ -15,12 +15,14 @@ import {
   Eye,
   EyeOff,
   Settings,
+  AlertCircle,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Textarea } from "../components/ui/textarea";
 import { Switch } from "../components/ui/switch";
 import { Badge } from "../components/ui/badge";
+import { supabase } from "../lib/supabase";
 
 const RegisterPage: React.FC = () => {
   const navigate = useNavigate();
@@ -67,6 +69,8 @@ const RegisterPage: React.FC = () => {
   });
 
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
+  const [isLoading, setIsLoading] = useState(false);
+  const [signupError, setSignupError] = useState<string | null>(null);
 
   const interestOptions = [
     "Fine Dining",
@@ -123,7 +127,7 @@ const RegisterPage: React.FC = () => {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleNext = () => {
+  const handleNext = async () => {
     if (validateStep(step)) {
       switch (step) {
         case "role":
@@ -136,9 +140,68 @@ const RegisterPage: React.FC = () => {
           setStep("verification");
           break;
         case "verification":
-          setStep("complete");
+          // Sign up the user in Supabase
+          await handleSignup();
           break;
       }
+    }
+  };
+
+  const handleSignup = async () => {
+    setIsLoading(true);
+    setSignupError(null);
+
+    try {
+      // 1. Sign up user with Supabase Auth
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: formData.email,
+        password: formData.password,
+      });
+
+      if (authError) {
+        setSignupError(authError.message);
+        setIsLoading(false);
+        return;
+      }
+
+      if (!authData.user) {
+        setSignupError("Failed to create user account");
+        setIsLoading(false);
+        return;
+      }
+
+      // 2. Update the user profile with form data
+      // The trigger should have already created a basic profile, now we update it
+      const profileUpdate: Record<string, any> = {
+        first_name: formData.firstName,
+        last_name: formData.lastName,
+        phone: formData.phone,
+        role: formData.role,
+      };
+
+      // Only add service provider fields if they selected that role
+      if (formData.role === "service_provider") {
+        profileUpdate.service_type = formData.serviceType;
+        profileUpdate.service_category = formData.serviceCategory;
+      }
+
+      const { error: profileError } = await supabase
+        .from("user_profiles")
+        .update(profileUpdate)
+        .eq("user_id", authData.user.id);
+
+      if (profileError) {
+        console.error("Profile update error:", profileError);
+        // Don't fail the signup if profile update has issues - the trigger already created a basic profile
+      }
+
+      // 3. Show success and advance to complete
+      setStep("complete");
+    } catch (error) {
+      console.error("Signup error:", error);
+      setSignupError(error instanceof Error ? error.message : "An error occurred during signup");
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -738,37 +801,49 @@ const RegisterPage: React.FC = () => {
     <div className="space-y-6 text-center">
       <div className="mb-8">
         <h2 className="text-2xl font-bold text-sheraton-navy mb-2">
-          Verify Your Account
+          Complete Your Registration
         </h2>
         <p className="text-gray-600">
-          We've sent a verification code to {formData.email}
+          Review your information and complete the signup
         </p>
       </div>
 
       <div className="bg-sheraton-cream rounded-lg p-6">
         <h3 className="text-lg font-semibold text-sheraton-navy mb-4">
-          Enter Verification Code
+          Account Information
         </h3>
-        <div className="flex justify-center space-x-2 mb-4">
-          {[1, 2, 3, 4, 5, 6].map((i) => (
-            <Input
-              key={i}
-              type="text"
-              maxLength={1}
-              className="w-12 h-12 text-center text-lg font-bold"
-            />
-          ))}
+        <div className="space-y-3 text-left">
+          <div className="flex justify-between">
+            <span className="text-gray-600">Email:</span>
+            <span className="font-medium">{formData.email}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-600">Name:</span>
+            <span className="font-medium">{formData.firstName} {formData.lastName}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-600">Account Type:</span>
+            <span className="font-medium capitalize">{formData.role?.replace("_", " ")}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-600">Phone:</span>
+            <span className="font-medium">{formData.phone}</span>
+          </div>
         </div>
-        <Button variant="outline" className="mt-4">
-          Resend Code
-        </Button>
       </div>
 
+      {signupError && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-start space-x-3">
+          <AlertCircle className="h-5 w-5 text-red-500 flex-shrink-0 mt-0.5" />
+          <div className="text-left">
+            <p className="font-medium text-red-800">Registration Failed</p>
+            <p className="text-red-700 text-sm">{signupError}</p>
+          </div>
+        </div>
+      )}
+
       <div className="text-sm text-gray-600">
-        <p>Didn't receive the code? Check your spam folder or</p>
-        <button className="text-sheraton-navy underline hover:no-underline">
-          use a different email address
-        </button>
+        <p>Click "Complete Registration" below to create your account</p>
       </div>
     </div>
   );
@@ -917,6 +992,7 @@ const RegisterPage: React.FC = () => {
                       }
                     }}
                     className="flex-1"
+                    disabled={isLoading}
                   >
                     Back
                   </Button>
@@ -924,10 +1000,13 @@ const RegisterPage: React.FC = () => {
                 <Button
                   onClick={handleNext}
                   className="flex-1 bg-sheraton-gold hover:bg-sheraton-gold/90 text-sheraton-navy"
+                  disabled={isLoading}
                 >
-                  {step === "verification"
-                    ? "Complete Registration"
-                    : "Continue"}
+                  {isLoading
+                    ? "Creating Account..."
+                    : step === "verification"
+                      ? "Complete Registration"
+                      : "Continue"}
                 </Button>
               </div>
             )}
