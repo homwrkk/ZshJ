@@ -66,59 +66,48 @@ DROP POLICY IF EXISTS "Managers can update all complaints" ON public.complaints;
 -- ============================================================================
 -- CREATE RLS POLICIES FOR USER PROFILES
 -- ============================================================================
-CREATE POLICY "Users can read own profile" ON public.user_profiles
+-- Allow all authenticated users to read all profiles (needed for task assignment dropdowns)
+CREATE POLICY "Authenticated users can read all profiles" ON public.user_profiles
   FOR SELECT
-  USING (auth.uid() = user_id);
+  USING (auth.role() = 'authenticated');
 
+-- Users can update their own profile
 CREATE POLICY "Users can update own profile" ON public.user_profiles
   FOR UPDATE
   USING (auth.uid() = user_id);
 
+-- Users can insert their own profile (during signup via trigger)
 CREATE POLICY "Users can insert own profile" ON public.user_profiles
   FOR INSERT
   WITH CHECK (auth.uid() = user_id);
 
-CREATE POLICY "Managers can read all profiles" ON public.user_profiles
-  FOR SELECT
-  USING (
-    EXISTS (
-      SELECT 1 FROM public.user_profiles up
-      WHERE up.user_id = auth.uid() AND up.role = 'manager'
-    )
-  );
-
 -- ============================================================================
 -- CREATE RLS POLICIES FOR COMPLAINTS
 -- ============================================================================
-CREATE POLICY "Users can read own complaints" ON public.complaints
-  FOR SELECT
-  USING (user_id = auth.uid() OR email = auth.jwt() ->> 'email');
-
+-- Public: Anyone can submit a complaint (no auth required)
 CREATE POLICY "Anyone can submit complaint" ON public.complaints
   FOR INSERT
   WITH CHECK (true);
 
+-- Users can read their own complaints
+CREATE POLICY "Users can read own complaints" ON public.complaints
+  FOR SELECT
+  USING (user_id = auth.uid() OR email = auth.jwt() ->> 'email');
+
+-- Users can update their own complaints
 CREATE POLICY "Users can update own complaints" ON public.complaints
   FOR UPDATE
   USING (user_id = auth.uid());
 
-CREATE POLICY "Managers can read all complaints" ON public.complaints
+-- Authenticated users can read all complaints (for managers to see all complaints)
+CREATE POLICY "Authenticated users can read all complaints" ON public.complaints
   FOR SELECT
-  USING (
-    EXISTS (
-      SELECT 1 FROM public.user_profiles up
-      WHERE up.user_id = auth.uid() AND up.role = 'manager'
-    )
-  );
+  USING (auth.role() = 'authenticated');
 
-CREATE POLICY "Managers can update all complaints" ON public.complaints
+-- Authenticated users can update all complaints (for managers to update status)
+CREATE POLICY "Authenticated users can update all complaints" ON public.complaints
   FOR UPDATE
-  USING (
-    EXISTS (
-      SELECT 1 FROM public.user_profiles up
-      WHERE up.user_id = auth.uid() AND up.role = 'manager'
-    )
-  );
+  USING (auth.role() = 'authenticated');
 
 -- ============================================================================
 -- AUTOMATIC PROFILE CREATION ON SIGNUP
@@ -304,53 +293,35 @@ DROP POLICY IF EXISTS "Users can update own notifications" ON public.notificatio
 -- ============================================================================
 -- RLS POLICIES FOR TASKS
 -- ============================================================================
-CREATE POLICY "Managers can read all tasks" ON public.tasks
+-- Authenticated users can read all tasks
+CREATE POLICY "Authenticated users can read all tasks" ON public.tasks
   FOR SELECT
-  USING (
-    EXISTS (
-      SELECT 1 FROM public.user_profiles up
-      WHERE up.user_id = auth.uid() AND up.role = 'manager'
-    )
-  );
+  USING (auth.role() = 'authenticated');
 
-CREATE POLICY "Managers can create tasks" ON public.tasks
+-- Authenticated users can create tasks
+CREATE POLICY "Authenticated users can create tasks" ON public.tasks
   FOR INSERT
-  WITH CHECK (
-    EXISTS (
-      SELECT 1 FROM public.user_profiles up
-      WHERE up.user_id = auth.uid() AND up.role = 'manager'
-    )
-  );
+  WITH CHECK (auth.role() = 'authenticated');
 
-CREATE POLICY "Managers can update all tasks" ON public.tasks
+-- Authenticated users can update all tasks
+CREATE POLICY "Authenticated users can update all tasks" ON public.tasks
   FOR UPDATE
-  USING (
-    EXISTS (
-      SELECT 1 FROM public.user_profiles up
-      WHERE up.user_id = auth.uid() AND up.role = 'manager'
-    )
-  );
-
-CREATE POLICY "Service providers can read assigned tasks" ON public.tasks
-  FOR SELECT
-  USING (
-    EXISTS (
-      SELECT 1 FROM public.user_profiles up
-      WHERE up.id = assigned_to AND up.user_id = auth.uid()
-    )
-  );
+  USING (auth.role() = 'authenticated');
 
 -- ============================================================================
 -- RLS POLICIES FOR NOTIFICATIONS
 -- ============================================================================
+-- Users can read their own notifications
 CREATE POLICY "Users can read own notifications" ON public.notifications
   FOR SELECT
   USING (user_id = auth.uid());
 
+-- System/triggers can insert notifications
 CREATE POLICY "System can insert notifications" ON public.notifications
   FOR INSERT
   WITH CHECK (true);
 
+-- Users can update their own notifications
 CREATE POLICY "Users can update own notifications" ON public.notifications
   FOR UPDATE
   USING (user_id = auth.uid());
