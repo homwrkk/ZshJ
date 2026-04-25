@@ -6,11 +6,11 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS public.user_profiles (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  user_id UUID UNIQUE REFERENCES auth.users(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL UNIQUE REFERENCES auth.users(id) ON DELETE CASCADE,
   email VARCHAR(255) NOT NULL UNIQUE,
-  role VARCHAR(50) NOT NULL CHECK (role IN ('guest', 'manager', 'service_provider')),
-  first_name VARCHAR(100) NOT NULL,
-  last_name VARCHAR(100) NOT NULL,
+  role VARCHAR(50) NOT NULL DEFAULT 'guest' CHECK (role IN ('guest', 'manager', 'service_provider')),
+  first_name VARCHAR(100),
+  last_name VARCHAR(100),
   phone VARCHAR(20),
   room_number VARCHAR(10),
   -- Service provider fields
@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS public.complaints (
   room_number VARCHAR(10) NOT NULL,
   complaint_type VARCHAR(100) NOT NULL,
   description TEXT NOT NULL,
-  priority VARCHAR(20) NOT NULL CHECK (priority IN ('low', 'medium', 'high', 'urgent')),
+  priority VARCHAR(20) NOT NULL DEFAULT 'medium' CHECK (priority IN ('low', 'medium', 'high', 'urgent')),
   status VARCHAR(50) NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'in_progress', 'resolved', 'closed')),
   attachments JSONB DEFAULT '[]'::jsonb,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -62,7 +62,7 @@ ALTER TABLE public.complaints ENABLE ROW LEVEL SECURITY;
 -- Users can read their own profile
 CREATE POLICY "Users can read own profile" ON public.user_profiles
   FOR SELECT
-  USING (auth.uid() = user_id OR auth.uid()::text = 'anon');
+  USING (auth.uid() = user_id);
 
 -- Users can update their own profile
 CREATE POLICY "Users can update own profile" ON public.user_profiles
@@ -72,7 +72,7 @@ CREATE POLICY "Users can update own profile" ON public.user_profiles
 -- Users can insert their own profile (during signup)
 CREATE POLICY "Users can insert own profile" ON public.user_profiles
   FOR INSERT
-  WITH CHECK (auth.uid() = user_id OR user_id IS NULL);
+  WITH CHECK (auth.uid() = user_id);
 
 -- Managers can read all profiles (optional - for management dashboard)
 CREATE POLICY "Managers can read all profiles" ON public.user_profiles
@@ -85,17 +85,17 @@ CREATE POLICY "Managers can read all profiles" ON public.user_profiles
   );
 
 -- Complaints RLS Policies
--- Authenticated users can read their own complaints
+-- Users can read their own complaints
 CREATE POLICY "Users can read own complaints" ON public.complaints
   FOR SELECT
-  USING (user_id = auth.uid());
+  USING (user_id = auth.uid() OR email = auth.jwt() ->> 'email');
 
--- Anyone (authenticated or not) can submit complaints
+-- Users can insert complaints (with or without auth)
 CREATE POLICY "Anyone can submit complaint" ON public.complaints
   FOR INSERT
   WITH CHECK (true);
 
--- Authenticated users can update their own complaints
+-- Users can update their own complaints
 CREATE POLICY "Users can update own complaints" ON public.complaints
   FOR UPDATE
   USING (user_id = auth.uid());
@@ -121,137 +121,34 @@ CREATE POLICY "Managers can update all complaints" ON public.complaints
   );
 
 -- ============================================================================
--- SAMPLE DATA
+-- AUTOMATIC PROFILE CREATION ON SIGNUP (REPLACES MANUAL INSERT)
 -- ============================================================================
 
--- Insert sample guest user profile (for testing without auth)
-INSERT INTO public.user_profiles (
-  id, email, role, first_name, last_name, phone, room_number, created_at, updated_at
-) VALUES (
-  'a1a1a1a1-a1a1-a1a1-a1a1-a1a1a1a1a1a1',
-  'guest.demo@sheraton.com',
-  'guest',
-  'John',
-  'Doe',
-  '+1-555-0100',
-  '301',
-  NOW(),
-  NOW()
-) ON CONFLICT (id) DO NOTHING;
+-- Function to automatically create a profile row for new users
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO public.user_profiles (user_id, email, role, first_name, last_name)
+  VALUES (
+    new.id,
+    new.email,
+    'guest',  -- Default role is guest
+    '',       -- Empty first name (to be filled in later)
+    ''        -- Empty last name (to be filled in later)
+  );
+  RETURN new;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Insert sample manager user profile
-INSERT INTO public.user_profiles (
-  id, email, role, first_name, last_name, phone, created_at, updated_at
-) VALUES (
-  'c2c2c2c2-c2c2-c2c2-c2c2-c2c2c2c2c2c2',
-  'manager.demo@sheraton.com',
-  'manager',
-  'Jane',
-  'Smith',
-  '+1-555-0101',
-  NOW(),
-  NOW()
-) ON CONFLICT (id) DO NOTHING;
-
--- Insert sample service provider (internal)
-INSERT INTO public.user_profiles (
-  id, email, role, first_name, last_name, phone, service_type, service_category, created_at, updated_at
-) VALUES (
-  'e3e3e3e3-e3e3-e3e3-e3e3-e3e3e3e3e3e3',
-  'maintenance.staff@sheraton.com',
-  'service_provider',
-  'Robert',
-  'Johnson',
-  '+1-555-0102',
-  'Maintenance',
-  'internal',
-  NOW(),
-  NOW()
-) ON CONFLICT (id) DO NOTHING;
-
--- Insert sample external service provider
-INSERT INTO public.user_profiles (
-  id, email, role, first_name, last_name, phone, service_type, service_category, created_at, updated_at
-) VALUES (
-  'g4g4g4g4-g4g4-g4g4-g4g4-g4g4g4g4g4g4',
-  'external.vendor@plumbing.com',
-  'service_provider',
-  'Mike',
-  'Wilson',
-  '+1-555-0103',
-  'Plumbing',
-  'external',
-  NOW(),
-  NOW()
-) ON CONFLICT (id) DO NOTHING;
-
--- Insert sample complaints
-INSERT INTO public.complaints (
-  id, guest_name, email, room_number, complaint_type, description, priority, status, attachments, created_at, updated_at
-) VALUES (
-  'comp-001-uuid-0001',
-  'John Doe',
-  'guest.demo@sheraton.com',
-  '301',
-  'Maintenance Issue',
-  'The air conditioning in room 301 is not working properly. The temperature control is set to 72°F but the room is still very warm. This is affecting my comfort and sleep.',
-  'urgent',
-  'open',
-  '[]'::jsonb,
-  NOW() - INTERVAL '2 hours',
-  NOW() - INTERVAL '2 hours'
-) ON CONFLICT (id) DO NOTHING;
-
-INSERT INTO public.complaints (
-  id, guest_name, email, room_number, complaint_type, description, priority, status, attachments, created_at, updated_at
-) VALUES (
-  'comp-002-uuid-0002',
-  'Sarah Johnson',
-  'sarah.johnson@email.com',
-  '205',
-  'Cleanliness',
-  'The bathroom had not been properly cleaned when we checked in. There were hairs in the sink and the towels were not fresh. We immediately requested housekeeping to come clean the room.',
-  'high',
-  'in_progress',
-  '[]'::jsonb,
-  NOW() - INTERVAL '4 hours',
-  NOW() - INTERVAL '1 hour'
-) ON CONFLICT (id) DO NOTHING;
-
-INSERT INTO public.complaints (
-  id, guest_name, email, room_number, complaint_type, description, priority, status, attachments, created_at, updated_at
-) VALUES (
-  'comp-003-uuid-0003',
-  'Michael Chen',
-  'michael.chen@email.com',
-  '420',
-  'Noise/Disturbance',
-  'There was excessive noise coming from the adjacent room late into the evening (past midnight). Despite requesting quiet hours, the noise continued. This significantly disrupted our sleep.',
-  'medium',
-  'resolved',
-  '[]'::jsonb,
-  NOW() - INTERVAL '1 day',
-  NOW() - INTERVAL '2 hours'
-) ON CONFLICT (id) DO NOTHING;
-
-INSERT INTO public.complaints (
-  id, guest_name, email, room_number, complaint_type, description, priority, status, attachments, created_at, updated_at
-) VALUES (
-  'comp-004-uuid-0004',
-  'Emma Wilson',
-  'emma.wilson@email.com',
-  '315',
-  'Missing Items',
-  'The room was missing several amenities that are typically provided: shower caps, sewing kits, and complimentary water bottles. These items are important for guest comfort.',
-  'low',
-  'resolved',
-  '[]'::jsonb,
-  NOW() - INTERVAL '18 hours',
-  NOW() - INTERVAL '12 hours'
-) ON CONFLICT (id) DO NOTHING;
+-- Trigger that fires when a user signs up
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW
+  EXECUTE FUNCTION public.handle_new_user();
 
 -- ============================================================================
--- TRIGGER FOR UPDATED_AT TIMESTAMP
+-- TRIGGERS FOR UPDATED_AT TIMESTAMP
 -- ============================================================================
 
 -- Create function to update the updated_at field
@@ -278,11 +175,98 @@ CREATE TRIGGER update_complaints_updated_at
   EXECUTE FUNCTION update_updated_at_column();
 
 -- ============================================================================
+-- SAMPLE DATA FOR TESTING
+-- ============================================================================
+-- NOTE: User profile samples are NO LONGER included here.
+-- Profiles are automatically created when users sign up via Supabase Auth.
+--
+-- To test with user profiles:
+-- 1. Use Supabase Auth to create test users
+-- 2. Profiles will be automatically created
+-- 3. Update profiles via the registration flow in the app
+
+-- Insert sample complaints (no hard-coded user_id references)
+INSERT INTO public.complaints (
+  id, user_id, guest_name, email, room_number, complaint_type, description, priority, status, attachments, created_at, updated_at
+) VALUES (
+  'a1a1a1a1-a1a1-a1a1-a1a1-a1a1a1a1a1a1',
+  NULL,
+  'John Doe',
+  'john.doe@example.com',
+  '301',
+  'Maintenance Issue',
+  'The air conditioning in room 301 is not working properly. The temperature control is set to 72°F but the room is still very warm. This is affecting my comfort and sleep.',
+  'urgent',
+  'open',
+  '[]'::jsonb,
+  NOW() - INTERVAL '2 hours',
+  NOW() - INTERVAL '2 hours'
+) ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO public.complaints (
+  id, user_id, guest_name, email, room_number, complaint_type, description, priority, status, attachments, created_at, updated_at
+) VALUES (
+  'a2a2a2a2-a2a2-a2a2-a2a2-a2a2a2a2a2a2',
+  NULL,
+  'Sarah Johnson',
+  'sarah.johnson@example.com',
+  '205',
+  'Cleanliness',
+  'The bathroom had not been properly cleaned when we checked in. There were hairs in the sink and the towels were not fresh. We immediately requested housekeeping to come clean the room.',
+  'high',
+  'in_progress',
+  '[]'::jsonb,
+  NOW() - INTERVAL '4 hours',
+  NOW() - INTERVAL '1 hour'
+) ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO public.complaints (
+  id, user_id, guest_name, email, room_number, complaint_type, description, priority, status, attachments, created_at, updated_at
+) VALUES (
+  'a3a3a3a3-a3a3-a3a3-a3a3-a3a3a3a3a3a3',
+  NULL,
+  'Michael Chen',
+  'michael.chen@example.com',
+  '420',
+  'Noise/Disturbance',
+  'There was excessive noise coming from the adjacent room late into the evening (past midnight). Despite requesting quiet hours, the noise continued. This significantly disrupted our sleep.',
+  'medium',
+  'resolved',
+  '[]'::jsonb,
+  NOW() - INTERVAL '1 day',
+  NOW() - INTERVAL '2 hours'
+) ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO public.complaints (
+  id, user_id, guest_name, email, room_number, complaint_type, description, priority, status, attachments, created_at, updated_at
+) VALUES (
+  'a4a4a4a4-a4a4-a4a4-a4a4-a4a4a4a4a4a4',
+  NULL,
+  'Emma Wilson',
+  'emma.wilson@example.com',
+  '315',
+  'Missing Items',
+  'The room was missing several amenities that are typically provided: shower caps, sewing kits, and complimentary water bottles. These items are important for guest comfort.',
+  'low',
+  'resolved',
+  '[]'::jsonb,
+  NOW() - INTERVAL '18 hours',
+  NOW() - INTERVAL '12 hours'
+) ON CONFLICT (id) DO NOTHING;
+
+-- ============================================================================
 -- SUMMARY
 -- ============================================================================
 -- Tables created:
 --   1. user_profiles - Stores user data with multi-tenant role support
+--      - Automatically populated via trigger on user signup
+--      - Foreign key constraint maintains data integrity
 --   2. complaints - Stores guest complaints with tracking and status management
+--
+-- Automatic Profile Creation:
+--   - When a new user signs up via Supabase Auth, a profile is automatically created
+--   - Initial role is set to 'guest' (can be updated via app)
+--   - No manual INSERT statements needed
 --
 -- RLS Policies:
 --   - Users can manage their own data
@@ -290,7 +274,5 @@ CREATE TRIGGER update_complaints_updated_at
 --   - Public access for complaint submission (unauthenticated guests)
 --
 -- Sample Data:
---   - 1 Guest user profile
---   - 1 Manager user profile
---   - 2 Service Provider profiles (1 internal, 1 external)
 --   - 4 Sample complaints with various statuses and priorities
+--   - User profiles are created automatically when users sign up
