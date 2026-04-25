@@ -21,8 +21,6 @@ import {
 import {
   Tabs,
   TabsContent,
-  TabsList,
-  TabsTrigger,
 } from "../components/ui/tabs";
 import {
   CheckSquare,
@@ -381,30 +379,43 @@ const TasksPage: React.FC = () => {
           </Card>
         </div>
 
-        <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3 bg-white border border-gray-200">
-            <TabsTrigger
-              value="new-task"
-              className="flex items-center gap-2 data-[state=active]:sheraton-gradient data-[state=active]:text-white"
+        {/* Navigation Tabs */}
+        <div className="flex justify-center mb-8">
+          <div className="bg-white rounded-lg shadow-md p-1 flex">
+            <button
+              onClick={() => handleTabChange("new-task")}
+              className={`px-6 py-3 rounded-md font-medium transition-colors ${
+                activeTab === "new-task"
+                  ? "bg-sheraton-gold text-sheraton-navy shadow-sm"
+                  : "text-gray-600 hover:text-sheraton-navy"
+              }`}
             >
-              <PlusCircle className="h-4 w-4" />
               New Task
-            </TabsTrigger>
-            <TabsTrigger
-              value="todo-list"
-              className="flex items-center gap-2 data-[state=active]:sheraton-gradient data-[state=active]:text-white"
+            </button>
+            <button
+              onClick={() => handleTabChange("todo-list")}
+              className={`px-6 py-3 rounded-md font-medium transition-colors ${
+                activeTab === "todo-list"
+                  ? "bg-sheraton-gold text-sheraton-navy shadow-sm"
+                  : "text-gray-600 hover:text-sheraton-navy"
+              }`}
             >
-              <CheckSquare className="h-4 w-4" />
-              Task List
-            </TabsTrigger>
-            <TabsTrigger
-              value="live-chat"
-              className="flex items-center gap-2 data-[state=active]:sheraton-gradient data-[state=active]:text-white"
+              To Do List
+            </button>
+            <button
+              onClick={() => handleTabChange("live-chat")}
+              className={`px-6 py-3 rounded-md font-medium transition-colors ${
+                activeTab === "live-chat"
+                  ? "bg-sheraton-gold text-sheraton-navy shadow-sm"
+                  : "text-gray-600 hover:text-sheraton-navy"
+              }`}
             >
-              <MessageSquare className="h-4 w-4" />
-              Chat & Updates
-            </TabsTrigger>
-          </TabsList>
+              Live Chat
+            </button>
+          </div>
+        </div>
+
+        <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
 
           {/* New Task Tab */}
           <TabsContent value="new-task" className="space-y-6">
@@ -605,59 +616,57 @@ const TasksPage: React.FC = () => {
           {/* To do List Tab */}
           <TabsContent value="todo-list" className="space-y-6">
             {/* Toolbar */}
-            <Card className="p-4 border border-gray-200">
-              <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
-                <div className="flex-1 flex gap-2 w-full md:w-auto">
-                  <div className="flex-1 relative">
-                    <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      placeholder="Search tasks..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className="pl-10 border-gray-200"
-                    />
-                  </div>
-
-                  <Select value={filterStatus} onValueChange={setFilterStatus}>
-                    <SelectTrigger className="w-40 border-gray-200">
-                      <Filter className="h-4 w-4 mr-2" />
-                      <SelectValue placeholder="Filter" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Status</SelectItem>
-                      <SelectItem value="in-progress">In Progress</SelectItem>
-                      <SelectItem value="flagged">Flagged</SelectItem>
-                      <SelectItem value="completed">Completed</SelectItem>
-                      <SelectItem value="approved">Approved</SelectItem>
-                      <SelectItem value="invoiced">Invoiced</SelectItem>
-                      <SelectItem value="paid">Paid</SelectItem>
-                      <SelectItem value="archived">Archived</SelectItem>
-                    </SelectContent>
-                  </Select>
+            <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
+              <div className="flex-1 flex gap-2 w-full md:w-auto">
+                <div className="flex-1 relative">
+                  <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search tasks..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-10 border-gray-200"
+                  />
                 </div>
 
-                <div className="flex gap-2 border-l pl-4">
-                  <Button
-                    variant={viewMode === "grid" ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setViewMode("grid")}
-                    className={viewMode === "grid" ? "sheraton-gradient text-white" : ""}
-                    title="Grid view"
-                  >
-                    <Grid3x3 className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant={viewMode === "list" ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setViewMode("list")}
-                    className={viewMode === "list" ? "sheraton-gradient text-white" : ""}
-                    title="List view"
-                  >
-                    <List className="h-4 w-4" />
-                  </Button>
-                </div>
+                <Select value={filterStatus} onValueChange={setFilterStatus}>
+                  <SelectTrigger className="w-40 border-gray-200">
+                    <Filter className="h-4 w-4 mr-2" />
+                    <SelectValue placeholder="Filter" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Status</SelectItem>
+                    <SelectItem value="in-progress">In Progress</SelectItem>
+                    <SelectItem value="flagged">Flagged</SelectItem>
+                    <SelectItem value="completed">Completed</SelectItem>
+                    <SelectItem value="approved">Approved</SelectItem>
+                    <SelectItem value="invoiced">Invoiced</SelectItem>
+                    <SelectItem value="paid">Paid</SelectItem>
+                    <SelectItem value="archived">Archived</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-            </Card>
+
+              <div className="flex gap-2 border-l pl-4">
+                <Button
+                  variant={viewMode === "grid" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setViewMode("grid")}
+                  className={viewMode === "grid" ? "sheraton-gradient text-white" : ""}
+                  title="Grid view"
+                >
+                  <Grid3x3 className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant={viewMode === "list" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setViewMode("list")}
+                  className={viewMode === "list" ? "sheraton-gradient text-white" : ""}
+                  title="List view"
+                >
+                  <List className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
 
             {/* Tasks Display */}
             <div
