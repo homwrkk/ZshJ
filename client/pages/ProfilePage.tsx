@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { Button } from "../components/ui/button";
+import { supabase } from "../lib/supabase";
 import {
   Card,
   CardContent,
@@ -69,19 +70,21 @@ import {
 import { format, addDays } from "date-fns";
 
 const ProfilePage = () => {
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState("dashboard");
   const [isEditing, setIsEditing] = useState(false);
   const [showLoyaltyDetails, setShowLoyaltyDetails] = useState(false);
+  const [dataLoaded, setDataLoaded] = useState(false);
 
-  // Mock user data
+  // User data from database
   const [userData, setUserData] = useState({
-    firstName: "Alexandra",
-    lastName: "Chen",
-    email: "alexandra.chen@email.com",
-    phone: "+1 (555) 123-4567",
-    birthday: "1990-03-15",
-    location: "New York, NY",
-    memberSince: "2022-06-15",
+    firstName: "",
+    lastName: "",
+    email: "",
+    phone: "",
+    birthday: "",
+    location: "",
+    memberSince: new Date().toISOString().split('T')[0],
     profilePicture: "",
     preferences: {
       roomType: "deluxe",
@@ -96,6 +99,45 @@ const ProfilePage = () => {
       },
     },
   });
+
+  // Fetch user profile data from Supabase
+  useEffect(() => {
+    const fetchUserProfile = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+
+        if (!user) {
+          navigate("/login");
+          return;
+        }
+
+        const { data: profile } = await supabase
+          .from("user_profiles")
+          .select("*")
+          .eq("user_id", user.id)
+          .single();
+
+        if (profile) {
+          setUserData((prev) => ({
+            ...prev,
+            firstName: profile.first_name || "",
+            lastName: profile.last_name || "",
+            email: user.email || "",
+            phone: profile.phone || "",
+            birthday: profile.birthday || "",
+            location: profile.location || "",
+            memberSince: profile.created_at ? profile.created_at.split('T')[0] : new Date().toISOString().split('T')[0],
+            profilePicture: profile.profile_picture || "",
+          }));
+          setDataLoaded(true);
+        }
+      } catch (error) {
+        navigate("/login");
+      }
+    };
+
+    fetchUserProfile();
+  }, [navigate]);
 
   const loyaltyData = {
     currentPoints: 12500,
@@ -227,9 +269,12 @@ const ProfilePage = () => {
   ];
 
   const getBirthdayCountdown = () => {
+    if (!userData.birthday) return 0;
+
     const today = new Date();
     const currentYear = today.getFullYear();
-    const birthday = new Date(currentYear, 2, 15); // March 15th
+    const [year, month, day] = userData.birthday.split('-');
+    const birthday = new Date(currentYear, parseInt(month) - 1, parseInt(day));
 
     if (birthday < today) {
       birthday.setFullYear(currentYear + 1);
@@ -268,7 +313,7 @@ const ProfilePage = () => {
             </Badge>
           </div>
           <h1 className="text-4xl md:text-5xl font-bold text-sheraton-navy mb-4">
-            Welcome back, {userData.firstName}!
+            Welcome back, {userData.firstName || "Guest"}!
           </h1>
           <p className="text-lg text-muted-foreground">
             Your special journey continues • {loyaltyData.currentTier} Member
