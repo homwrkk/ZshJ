@@ -662,31 +662,34 @@ const TasksPage: React.FC = () => {
                             <SelectValue placeholder={formData.assignmentType ? "Select assignee" : "First select assignment type"} />
                           </SelectTrigger>
                           <SelectContent>
-                            {formData.assignmentType === "internal"
-                              ? internalStaff.length > 0
-                                ? internalStaff.map((staff) => (
-                                    <SelectItem
-                                      key={staff.id}
-                                      value={`${staff.first_name} ${staff.last_name} - ${staff.service_type}`}
-                                    >
-                                      {staff.first_name} {staff.last_name} ({staff.service_type})
-                                    </SelectItem>
-                                  ))
-                                : <SelectItem value="" disabled>No internal staff available</SelectItem>
-                              : formData.assignmentType === "external"
-                                ? externalVendors.length > 0
-                                  ? externalVendors.map((vendor) => (
-                                      <SelectItem
-                                        key={vendor.id}
-                                        value={`${vendor.first_name} ${vendor.last_name} - ${vendor.service_type}`}
-                                      >
-                                        {vendor.first_name} {vendor.last_name} ({vendor.service_type})
-                                      </SelectItem>
-                                    ))
-                                  : <SelectItem value="" disabled>No external vendors available</SelectItem>
-                                : <SelectItem value="" disabled>Select assignment type first</SelectItem>}
+                            {formData.assignmentType === "internal" && internalStaff.length > 0 &&
+                              internalStaff.map((staff) => (
+                                <SelectItem
+                                  key={staff.id}
+                                  value={`${staff.first_name} ${staff.last_name} - ${staff.service_type}`}
+                                >
+                                  {staff.first_name} {staff.last_name} ({staff.service_type})
+                                </SelectItem>
+                              ))
+                            }
+                            {formData.assignmentType === "external" && externalVendors.length > 0 &&
+                              externalVendors.map((vendor) => (
+                                <SelectItem
+                                  key={vendor.id}
+                                  value={`${vendor.first_name} ${vendor.last_name} - ${vendor.service_type}`}
+                                >
+                                  {vendor.first_name} {vendor.last_name} ({vendor.service_type})
+                                </SelectItem>
+                              ))
+                            }
                           </SelectContent>
                         </Select>
+                        {formData.assignmentType === "internal" && internalStaff.length === 0 && (
+                          <p className="text-sm text-orange-600">No internal staff available. Create staff profiles first.</p>
+                        )}
+                        {formData.assignmentType === "external" && externalVendors.length === 0 && (
+                          <p className="text-sm text-orange-600">No external vendors available. Create vendor profiles first.</p>
+                        )}
                       </div>
                     </div>
 
