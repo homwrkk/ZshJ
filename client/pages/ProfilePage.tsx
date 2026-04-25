@@ -74,8 +74,6 @@ const ProfilePage = () => {
   const [activeTab, setActiveTab] = useState("dashboard");
   const [isEditing, setIsEditing] = useState(false);
   const [showLoyaltyDetails, setShowLoyaltyDetails] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   // User data from database
   const [userData, setUserData] = useState({
@@ -105,61 +103,20 @@ const ProfilePage = () => {
   useEffect(() => {
     const fetchUserProfile = async () => {
       try {
-        setError(null);
+        const { data: { user } } = await supabase.auth.getUser();
 
-        // Get current session first
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-
-        if (sessionError) {
-          console.error("Session error:", sessionError);
-          setError("Session error: " + sessionError.message);
-          setIsLoading(false);
-          return;
-        }
-
-        // If no session, check if there's a user (newly signed up)
-        if (!session) {
-          const { data: { user }, error: userError } = await supabase.auth.getUser();
-
-          if (userError || !user) {
-            console.error("No authenticated user found");
-            setError("Not authenticated. Please log in.");
-            navigate("/login");
-            setIsLoading(false);
-            return;
-          }
-        }
-
-        // Get the user
-        const { data: { user }, error: userError } = await supabase.auth.getUser();
-
-        if (userError || !user) {
-          console.error("Error fetching user:", userError);
-          setError("Error fetching user: " + (userError?.message || "Unknown error"));
+        if (!user) {
           navigate("/login");
-          setIsLoading(false);
           return;
         }
 
-        console.log("Fetching profile for user:", user.id, "Email:", user.email);
-
-        // Fetch user profile from database
-        const { data: profile, error: profileError } = await supabase
+        const { data: profile } = await supabase
           .from("user_profiles")
           .select("*")
           .eq("user_id", user.id)
           .single();
 
-        if (profileError) {
-          console.error("Error fetching profile:", profileError);
-          setError("Error fetching profile: " + profileError.message);
-          setIsLoading(false);
-          return;
-        }
-
         if (profile) {
-          console.log("Profile data fetched:", profile);
-          // Update userData with actual database values
           setUserData((prev) => ({
             ...prev,
             firstName: profile.first_name || "",
@@ -171,16 +128,9 @@ const ProfilePage = () => {
             memberSince: profile.created_at ? profile.created_at.split('T')[0] : new Date().toISOString().split('T')[0],
             profilePicture: profile.profile_picture || "",
           }));
-        } else {
-          console.log("No profile found for user");
-          setError("Profile not found in database");
         }
       } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : "Unknown error";
-        console.error("Error in fetchUserProfile:", error);
-        setError("Error: " + errorMessage);
-      } finally {
-        setIsLoading(false);
+        navigate("/login");
       }
     };
 
@@ -348,40 +298,6 @@ const ProfilePage = () => {
   const copyReferralCode = () => {
     navigator.clipboard.writeText(generateReferralCode());
   };
-
-  // Show loading state while fetching user data
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-b from-sheraton-cream to-background flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-sheraton-gold mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading your profile...</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Show error state if there's an error
-  if (error) {
-    return (
-      <div className="min-h-screen bg-gradient-to-b from-sheraton-cream to-background flex items-center justify-center p-4">
-        <Card className="max-w-md w-full border-red-200 bg-red-50">
-          <CardHeader>
-            <CardTitle className="text-red-700">Error Loading Profile</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <p className="text-red-600">{error}</p>
-            <Button onClick={() => navigate("/")} className="w-full">
-              Go Home
-            </Button>
-            <Button onClick={() => navigate("/login")} variant="outline" className="w-full">
-              Go to Login
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-sheraton-cream to-background">
