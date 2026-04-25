@@ -17,7 +17,18 @@ This will create:
 - `complaints` table - for guest complaint submissions
 - RLS (Row Level Security) policies for data protection
 - Automatic timestamp triggers
-- Sample data for testing
+- **Automatic profile creation trigger** - creates user profiles when users sign up via Supabase Auth
+- Sample complaint data for testing
+
+### Important: How User Profiles Are Created
+
+Instead of hard-coded sample user profiles, this SQL includes an **automatic trigger** that:
+1. Fires when a new user signs up via Supabase Auth
+2. Automatically creates a profile in the `user_profiles` table
+3. Sets the default role to 'guest' (can be updated by the user during registration)
+4. Links the auth user to their profile via `user_id`
+
+**This approach ensures data integrity** and prevents the foreign key constraint error that occurs when manually inserting user data without corresponding auth users.
 
 ## Step 2: Verify Environment Variables
 
@@ -105,11 +116,65 @@ Stores guest complaint submissions:
 - **Loading State**: Shows submitting indicator while saving
 
 ### 3. Sample Data
-The SQL includes 4 sample complaints for testing:
-1. **Maintenance Issue** (Urgent) - HVAC problem
-2. **Cleanliness** (High) - Bathroom cleaning issue
-3. **Noise Disturbance** (Medium) - Adjacent room noise
-4. **Missing Items** (Low) - Amenities not provided
+The SQL includes:
+- **4 Sample Complaints** for testing:
+  1. **Maintenance Issue** (Urgent) - HVAC problem
+  2. **Cleanliness** (High) - Bathroom cleaning issue
+  3. **Noise Disturbance** (Medium) - Adjacent room noise
+  4. **Missing Items** (Low) - Amenities not provided
+
+- **User Profiles**: Created automatically when users sign up via Supabase Auth
+  - No hard-coded sample profiles (prevents foreign key errors)
+  - Uses a database trigger to create profiles on user signup
+  - Initial role is 'guest' (changeable via the app registration flow)
+
+## Automatic Profile Creation (Database Trigger)
+
+### Why This Approach?
+
+The original SQL included hard-coded user profile data, which caused a **Foreign Key Constraint Error (23503)**:
+```
+ERROR: insert or update on table "user_profiles" violates foreign key constraint "user_profiles_user_id_fkey"
+DETAIL: Key (user_id)=(b1b1b1b1-b1b1-b1b1-b1b1-b1b1b1b1b1b1) is not present in table "users".
+```
+
+**Solution**: Instead of manually inserting profiles, a database trigger automatically creates them.
+
+### How It Works
+
+1. **User Signs Up**: When a user creates an account via Supabase Auth (`auth.users` table)
+2. **Trigger Fires**: The `on_auth_user_created` trigger automatically executes
+3. **Profile Created**: A new row is inserted into `user_profiles` with:
+   - `user_id` = the new auth user's ID
+   - `email` = the auth user's email
+   - `role` = 'guest' (default, can be updated)
+   - `first_name` and `last_name` = empty (to be filled via registration form)
+4. **Data Integrity**: The foreign key constraint is satisfied because the profile's `user_id` now exists in `auth.users`
+
+### The Trigger Code
+
+```sql
+-- Function to automatically create a profile row for new users
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO public.user_profiles (user_id, email, role, first_name, last_name)
+  VALUES (
+    new.id,
+    new.email,
+    'guest',  -- Default role is guest
+    '',       -- Empty first name (to be filled in later)
+    ''        -- Empty last name (to be filled in later)
+  );
+  RETURN new;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+```
+
+This approach maintains Row Level Security (RLS) because:
+- Every user profile is linked to a real auth user
+- RLS policies can verify ownership via the `user_id` foreign key
+- No orphaned profiles without corresponding auth users
 
 ## Frontend Components
 
@@ -148,19 +213,38 @@ The SQL includes 4 sample complaints for testing:
 
 ### Test Registration
 1. Navigate to `/register`
-2. Select a role (Guest, Manager, or Service Provider)
-3. If Service Provider, fill out service details
-4. Continue through the registration steps
-5. Data will be saved to `user_profiles` table
+2. Sign up with Supabase Auth (this automatically creates a profile)
+3. Select a role (Guest, Manager, or Service Provider)
+4. If Service Provider, fill out service details
+5. Continue through the registration steps
+6. Data will be updated in the `user_profiles` table
 
 ### View Submissions
-To view submitted complaints in Supabase:
+To view submitted complaints and user profiles in Supabase:
 1. Go to Supabase dashboard
 2. Navigate to **Table Editor**
-3. Select the `complaints` table
-4. View all submitted complaints with their details
+3. **View Complaints**:
+   - Select the `complaints` table
+   - View all submitted complaints (including 4 sample complaints)
+4. **View User Profiles**:
+   - Select the `user_profiles` table
+   - You'll see profiles for users who have signed up
+   - Profiles are automatically created when users authenticate
 
 ## Troubleshooting
+
+### "Foreign Key Constraint Error" (23503)
+If you see this error when running the SQL:
+```
+ERROR: 23503: insert or update on table "user_profiles" violates foreign key constraint
+```
+
+**This is fixed in the current `database.sql`**. The corrected version:
+- Removes hard-coded user profile INSERT statements
+- Uses a database trigger to automatically create profiles when users sign up
+- No manual user data needed
+
+If you're using an old version of `database.sql`, delete all `INSERT INTO public.user_profiles` statements and run the new version.
 
 ### "Missing Supabase environment variables"
 - Ensure `.env` file exists in project root
