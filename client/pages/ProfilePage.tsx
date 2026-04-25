@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "../components/ui/button";
 import { supabase } from "../lib/supabase";
@@ -75,6 +75,8 @@ const ProfilePage = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [showLoyaltyDetails, setShowLoyaltyDetails] = useState(false);
   const [dataLoaded, setDataLoaded] = useState(false);
+  const saveTimeoutsRef = useRef<Record<string, NodeJS.Timeout>>({});
+  const userIdRef = useRef<string | null>(null);
 
   // User data from database
   const [userData, setUserData] = useState({
@@ -100,6 +102,31 @@ const ProfilePage = () => {
     },
   });
 
+  // Save field to database with debounce
+  const saveFieldToDatabase = async (fieldName: string, value: string) => {
+    if (!userIdRef.current) return;
+
+    // Clear existing timeout for this field
+    if (saveTimeoutsRef.current[fieldName]) {
+      clearTimeout(saveTimeoutsRef.current[fieldName]);
+    }
+
+    // Debounce the save by 500ms
+    saveTimeoutsRef.current[fieldName] = setTimeout(async () => {
+      try {
+        const dbFieldName = fieldName === 'firstName' ? 'first_name' :
+                           fieldName === 'lastName' ? 'last_name' : fieldName;
+
+        await supabase
+          .from("user_profiles")
+          .update({ [dbFieldName]: value })
+          .eq("user_id", userIdRef.current);
+      } catch (error) {
+        console.error(`Error saving ${fieldName}:`, error);
+      }
+    }, 500);
+  };
+
   // Fetch user profile data from Supabase
   useEffect(() => {
     const fetchUserProfile = async () => {
@@ -110,6 +137,8 @@ const ProfilePage = () => {
           navigate("/login");
           return;
         }
+
+        userIdRef.current = user.id;
 
         const { data: profile } = await supabase
           .from("user_profiles")
@@ -138,6 +167,13 @@ const ProfilePage = () => {
 
     fetchUserProfile();
   }, [navigate]);
+
+  // Cleanup timeouts on unmount
+  useEffect(() => {
+    return () => {
+      Object.values(saveTimeoutsRef.current).forEach(timeout => clearTimeout(timeout));
+    };
+  }, []);
 
   const loyaltyData = {
     currentPoints: 12500,
@@ -290,7 +326,6 @@ const ProfilePage = () => {
 
   const handleSaveProfile = () => {
     setIsEditing(false);
-    // Here you would typically save to a database
   };
 
   const generateReferralCode = () => {
@@ -312,9 +347,11 @@ const ProfilePage = () => {
               Special Guest Member
             </Badge>
           </div>
-          <h1 className="text-4xl md:text-5xl font-bold text-sheraton-navy mb-4">
-            Welcome back, {userData.firstName || "Guest"}!
-          </h1>
+          {userData.firstName && (
+            <h1 className="text-4xl md:text-5xl font-bold text-sheraton-navy mb-4">
+              Welcome back, {userData.firstName}!
+            </h1>
+          )}
           <p className="text-lg text-muted-foreground">
             Your special journey continues • {loyaltyData.currentTier} Member
           </p>
@@ -762,9 +799,10 @@ const ProfilePage = () => {
                     <Input
                       id="firstName"
                       value={userData.firstName}
-                      onChange={(e) =>
-                        setUserData({ ...userData, firstName: e.target.value })
-                      }
+                      onChange={(e) => {
+                        setUserData({ ...userData, firstName: e.target.value });
+                        saveFieldToDatabase("firstName", e.target.value);
+                      }}
                       disabled={!isEditing}
                     />
                   </div>
@@ -773,9 +811,10 @@ const ProfilePage = () => {
                     <Input
                       id="lastName"
                       value={userData.lastName}
-                      onChange={(e) =>
-                        setUserData({ ...userData, lastName: e.target.value })
-                      }
+                      onChange={(e) => {
+                        setUserData({ ...userData, lastName: e.target.value });
+                        saveFieldToDatabase("lastName", e.target.value);
+                      }}
                       disabled={!isEditing}
                     />
                   </div>
@@ -785,9 +824,10 @@ const ProfilePage = () => {
                       id="email"
                       type="email"
                       value={userData.email}
-                      onChange={(e) =>
-                        setUserData({ ...userData, email: e.target.value })
-                      }
+                      onChange={(e) => {
+                        setUserData({ ...userData, email: e.target.value });
+                        saveFieldToDatabase("email", e.target.value);
+                      }}
                       disabled={!isEditing}
                     />
                   </div>
@@ -796,9 +836,10 @@ const ProfilePage = () => {
                     <Input
                       id="phone"
                       value={userData.phone}
-                      onChange={(e) =>
-                        setUserData({ ...userData, phone: e.target.value })
-                      }
+                      onChange={(e) => {
+                        setUserData({ ...userData, phone: e.target.value });
+                        saveFieldToDatabase("phone", e.target.value);
+                      }}
                       disabled={!isEditing}
                     />
                   </div>
@@ -808,9 +849,10 @@ const ProfilePage = () => {
                       id="birthday"
                       type="date"
                       value={userData.birthday}
-                      onChange={(e) =>
-                        setUserData({ ...userData, birthday: e.target.value })
-                      }
+                      onChange={(e) => {
+                        setUserData({ ...userData, birthday: e.target.value });
+                        saveFieldToDatabase("birthday", e.target.value);
+                      }}
                       disabled={!isEditing}
                     />
                   </div>
@@ -819,9 +861,10 @@ const ProfilePage = () => {
                     <Input
                       id="location"
                       value={userData.location}
-                      onChange={(e) =>
-                        setUserData({ ...userData, location: e.target.value })
-                      }
+                      onChange={(e) => {
+                        setUserData({ ...userData, location: e.target.value });
+                        saveFieldToDatabase("location", e.target.value);
+                      }}
                       disabled={!isEditing}
                     />
                   </div>
