@@ -170,29 +170,32 @@ const RegisterPage: React.FC = () => {
         return;
       }
 
-      // 2. Update the user profile with form data
-      // The trigger should have already created a basic profile, now we update it
-      const profileUpdate: Record<string, any> = {
+      // 2. Create/Update the user profile with form data
+      const profileData: Record<string, any> = {
+        user_id: authData.user.id,
         first_name: formData.firstName,
         last_name: formData.lastName,
+        email: formData.email,
         phone: formData.phone,
         role: formData.role,
       };
 
       // Only add service provider fields if they selected that role
       if (formData.role === "service_provider") {
-        profileUpdate.service_type = formData.serviceType;
-        profileUpdate.service_category = formData.serviceCategory;
+        profileData.service_type = formData.serviceType;
+        profileData.service_category = formData.serviceCategory;
       }
 
+      // Try to insert the profile, or update if it already exists
       const { error: profileError } = await supabase
         .from("user_profiles")
-        .update(profileUpdate)
-        .eq("user_id", authData.user.id);
+        .upsert(profileData, { onConflict: "user_id" });
 
       if (profileError) {
-        console.error("Profile update error:", profileError);
-        // Don't fail the signup if profile update has issues - the trigger already created a basic profile
+        console.error("Profile creation error:", profileError);
+        // Don't fail the signup if profile creation has issues
+      } else {
+        console.log("Profile created/updated successfully for user:", authData.user.id);
       }
 
       // 3. Show success and advance to complete
