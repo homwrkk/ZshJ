@@ -255,6 +255,192 @@ INSERT INTO public.complaints (
 ) ON CONFLICT (id) DO NOTHING;
 
 -- ============================================================================
+-- TASKS TABLE (For manager task management)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS public.tasks (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  complaint_id UUID REFERENCES public.complaints(id) ON DELETE SET NULL,
+  title VARCHAR(255) NOT NULL,
+  description TEXT NOT NULL,
+  priority VARCHAR(20) NOT NULL DEFAULT 'medium' CHECK (priority IN ('low', 'medium', 'high', 'urgent')),
+  status VARCHAR(50) NOT NULL DEFAULT 'todo' CHECK (status IN ('todo', 'in_progress', 'in_review', 'completed')),
+  assigned_to UUID REFERENCES public.user_profiles(id) ON DELETE SET NULL,
+  assigned_category VARCHAR(50) CHECK (assigned_category IN ('internal', 'external')),
+  created_by UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Create indexes for tasks
+CREATE INDEX idx_tasks_complaint_id ON public.tasks(complaint_id);
+CREATE INDEX idx_tasks_assigned_to ON public.tasks(assigned_to);
+CREATE INDEX idx_tasks_created_by ON public.tasks(created_by);
+CREATE INDEX idx_tasks_status ON public.tasks(status);
+CREATE INDEX idx_tasks_priority ON public.tasks(priority);
+CREATE INDEX idx_tasks_created_at ON public.tasks(created_at DESC);
+
+-- ============================================================================
+-- NOTIFICATIONS TABLE (For real-time manager notifications)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS public.notifications (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  complaint_id UUID REFERENCES public.complaints(id) ON DELETE CASCADE,
+  task_id UUID REFERENCES public.tasks(id) ON DELETE CASCADE,
+  type VARCHAR(50) NOT NULL CHECK (type IN ('complaint_filed', 'task_created', 'task_updated', 'task_assigned')),
+  message TEXT NOT NULL,
+  is_read BOOLEAN DEFAULT false,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Create indexes for notifications
+CREATE INDEX idx_notifications_user_id ON public.notifications(user_id);
+CREATE INDEX idx_notifications_complaint_id ON public.notifications(complaint_id);
+CREATE INDEX idx_notifications_task_id ON public.notifications(task_id);
+CREATE INDEX idx_notifications_is_read ON public.notifications(is_read);
+CREATE INDEX idx_notifications_created_at ON public.notifications(created_at DESC);
+
+-- ============================================================================
+-- RLS POLICIES FOR TASKS TABLE
+-- ============================================================================
+ALTER TABLE public.tasks ENABLE ROW LEVEL SECURITY;
+
+-- Managers can read all tasks
+CREATE POLICY "Managers can read all tasks" ON public.tasks
+  FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.user_profiles up
+      WHERE up.user_id = auth.uid() AND up.role = 'manager'
+    )
+  );
+
+-- Managers can create tasks
+CREATE POLICY "Managers can create tasks" ON public.tasks
+  FOR INSERT
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.user_profiles up
+      WHERE up.user_id = auth.uid() AND up.role = 'manager'
+    )
+  );
+
+-- Managers can update all tasks
+CREATE POLICY "Managers can update all tasks" ON public.tasks
+  FOR UPDATE
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.user_profiles up
+      WHERE up.user_id = auth.uid() AND up.role = 'manager'
+    )
+  );
+
+-- Service providers can read tasks assigned to them
+CREATE POLICY "Service providers can read assigned tasks" ON public.tasks
+  FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.user_profiles up
+      WHERE up.id = assigned_to AND up.user_id = auth.uid()
+    )
+  );
+
+-- ============================================================================
+-- RLS POLICIES FOR NOTIFICATIONS TABLE
+-- ============================================================================
+ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
+
+-- Users can read their own notifications
+CREATE POLICY "Users can read own notifications" ON public.notifications
+  FOR SELECT
+  USING (user_id = auth.uid());
+
+-- System can insert notifications (via trigger)
+CREATE POLICY "System can insert notifications" ON public.notifications
+  FOR INSERT
+  WITH CHECK (true);
+
+-- Users can update their own notifications (mark as read)
+CREATE POLICY "Users can update own notifications" ON public.notifications
+  FOR UPDATE
+  USING (user_id = auth.uid());
+
+-- ============================================================================
+-- TRIGGER FOR TASKS UPDATED_AT TIMESTAMP
+-- ============================================================================
+DROP TRIGGER IF EXISTS update_tasks_updated_at ON public.tasks;
+CREATE TRIGGER update_tasks_updated_at
+  BEFORE UPDATE ON public.tasks
+  FOR EACH ROW
+  EXECUTE FUNCTION update_updated_at_column();
+
+-- ============================================================================
+-- FUNCTION TO NOTIFY MANAGERS OF NEW COMPLAINTS
+-- ============================================================================
+CREATE OR REPLACE FUNCTION notify_managers_of_complaint()
+RETURNS TRIGGER AS $$
+BEGIN
+  -- Insert notification for all managers
+  INSERT INTO public.notifications (user_id, complaint_id, type, message)
+  SELECT
+    up.user_id,
+    NEW.id,
+    'complaint_filed',
+    'New complaint filed by ' || NEW.guest_name || ' in room ' || NEW.room_number
+  FROM public.user_profiles up
+  WHERE up.role = 'manager';
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Trigger to notify managers when a new complaint is filed
+DROP TRIGGER IF EXISTS on_complaint_filed ON public.complaints;
+CREATE TRIGGER on_complaint_filed
+  AFTER INSERT ON public.complaints
+  FOR EACH ROW
+  EXECUTE FUNCTION notify_managers_of_complaint();
+
+-- ============================================================================
+-- FUNCTION TO NOTIFY RELEVANT USERS OF NEW TASKS
+-- ============================================================================
+CREATE OR REPLACE FUNCTION notify_on_task_created()
+RETURNS TRIGGER AS $$
+BEGIN
+  -- Notify the assigned person if it's a service provider task
+  IF NEW.assigned_to IS NOT NULL THEN
+    INSERT INTO public.notifications (user_id, task_id, type, message)
+    SELECT
+      up.user_id,
+      NEW.id,
+      'task_assigned',
+      'New task assigned to you: ' || NEW.title
+    FROM public.user_profiles up
+    WHERE up.id = NEW.assigned_to;
+  END IF;
+
+  -- Notify all managers about new task
+  INSERT INTO public.notifications (user_id, task_id, type, message)
+  SELECT
+    up.user_id,
+    NEW.id,
+    'task_created',
+    'New task created: ' || NEW.title
+  FROM public.user_profiles up
+  WHERE up.role = 'manager' AND up.user_id != NEW.created_by;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Trigger to notify users when a new task is created
+DROP TRIGGER IF EXISTS on_task_created ON public.tasks;
+CREATE TRIGGER on_task_created
+  AFTER INSERT ON public.tasks
+  FOR EACH ROW
+  EXECUTE FUNCTION notify_on_task_created();
+
+-- ============================================================================
 -- SUMMARY
 -- ============================================================================
 -- Tables created:
@@ -262,16 +448,24 @@ INSERT INTO public.complaints (
 --      - Automatically populated via trigger on user signup
 --      - Foreign key constraint maintains data integrity
 --   2. complaints - Stores guest complaints with tracking and status management
+--   3. tasks - Stores manager-created tasks, can be linked to complaints
+--      - Can be assigned to internal staff or external contractors
+--      - Tracks priority, status, and assignment
+--   4. notifications - Real-time notification system for managers
+--      - Automatically created when complaints are filed
+--      - Automatically created when tasks are assigned
 --
--- Automatic Profile Creation:
---   - When a new user signs up via Supabase Auth, a profile is automatically created
---   - Initial role is set to 'guest' (can be updated via app)
---   - No manual INSERT statements needed
+-- Automatic Features:
+--   - User profiles created automatically on signup
+--   - Managers notified when complaints are filed
+--   - Users notified when tasks are assigned
+--   - Timestamps automatically updated on record changes
 --
 -- RLS Policies:
 --   - Users can manage their own data
---   - Managers have elevated access to view and update complaints
+--   - Managers have elevated access to view and manage complaints and tasks
 --   - Public access for complaint submission (unauthenticated guests)
+--   - Service providers can see tasks assigned to them
 --
 -- Sample Data:
 --   - 4 Sample complaints with various statuses and priorities

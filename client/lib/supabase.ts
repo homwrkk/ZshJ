@@ -26,7 +26,7 @@ export interface UserProfile {
 
 export interface Complaint {
   id: string
-  user_id: string
+  user_id: string | null
   guest_name: string
   email: string
   room_number: string
@@ -37,4 +37,29 @@ export interface Complaint {
   attachments: string[]
   created_at: string
   updated_at: string
+}
+
+export interface Task {
+  id: string
+  complaint_id: string | null
+  title: string
+  description: string
+  priority: 'low' | 'medium' | 'high' | 'urgent'
+  status: 'todo' | 'in_progress' | 'in_review' | 'completed'
+  assigned_to: string | null
+  assigned_category: 'internal' | 'external' | null
+  created_by: string
+  created_at: string
+  updated_at: string
+}
+
+export interface Notification {
+  id: string
+  user_id: string
+  complaint_id: string | null
+  task_id: string | null
+  type: 'complaint_filed' | 'task_created' | 'task_updated' | 'task_assigned'
+  message: string
+  is_read: boolean
+  created_at: string
 }

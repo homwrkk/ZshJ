@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
@@ -11,6 +11,11 @@ import {
   NavigationMenuTrigger,
 } from "../ui/navigation-menu";
 import { Sheet, SheetContent, SheetTrigger } from "../ui/sheet";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "../ui/popover";
 import {
   Crown,
   Hotel,
@@ -28,12 +33,103 @@ import {
   CheckSquare,
   BarChart3,
   CreditCard,
+  AlertCircle,
+  CheckCircle2,
 } from "lucide-react";
 import { cn } from "../../lib/utils";
+import { supabase, Notification } from "../../lib/supabase";
+import { toast } from "../../hooks/use-toast";
 
 const Header = () => {
   const [isOpen, setIsOpen] = useState(false);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [loading, setLoading] = useState(true);
   const location = useLocation();
+
+  // Load notifications for current user
+  useEffect(() => {
+    const loadNotifications = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+          setLoading(false);
+          return;
+        }
+
+        const { data, error } = await supabase
+          .from("notifications")
+          .select("*")
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false })
+          .limit(10);
+
+        if (error) throw error;
+
+        setNotifications(data || []);
+        setUnreadCount((data || []).filter((n) => !n.is_read).length);
+      } catch (error) {
+        console.error("Error loading notifications:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadNotifications();
+
+    // Subscribe to real-time notifications
+    const { data: { user: currentUser } } = await supabase.auth.getUser();
+    if (!currentUser) return;
+
+    const subscription = supabase
+      .channel(`notifications:${currentUser.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "notifications",
+          filter: `user_id=eq.${currentUser.id}`,
+        },
+        (payload) => {
+          const newNotification = payload.new as Notification;
+          setNotifications((prev) => [newNotification, ...prev]);
+          setUnreadCount((prev) => prev + 1);
+          // Show toast for new notification
+          toast({
+            title: "New Notification",
+            description: newNotification.message,
+            duration: 4,
+          });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  const markAsRead = async (notificationId: string) => {
+    try {
+      const { error } = await supabase
+        .from("notifications")
+        .update({ is_read: true })
+        .eq("id", notificationId);
+
+      if (error) throw error;
+
+      setNotifications((prev) =>
+        prev.map((n) =>
+          n.id === notificationId ? { ...n, is_read: true } : n
+        )
+      );
+      setUnreadCount((prev) => Math.max(0, prev - 1));
+    } catch (error) {
+      console.error("Error marking notification as read:", error);
+    }
+  };
 
   const guestNavItems = [
     {
@@ -334,6 +430,96 @@ const Header = () => {
 
         <div className="flex flex-1 items-center justify-between space-x-2 md:justify-end">
           <nav className="flex items-center space-x-2">
+            {/* Notification Bell */}
+            <Popover open={isNotificationsOpen} onOpenChange={setIsNotificationsOpen}>
+              <PopoverTrigger asChild>
+                <Button variant="ghost" size="sm" className="relative text-xs">
+                  <Bell className="h-4 w-4" />
+                  <span className="hidden sm:inline ml-1">Notifications</span>
+                  {unreadCount > 0 && (
+                    <Badge
+                      className="absolute -top-1 -right-1 h-5 w-5 p-0 flex items-center justify-center bg-red-500 text-white text-xs"
+                    >
+                      {unreadCount > 9 ? '9+' : unreadCount}
+                    </Badge>
+                  )}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-80" align="end">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-semibold text-sm">Notifications</h3>
+                    {unreadCount > 0 && (
+                      <Badge variant="secondary" className="text-xs">
+                        {unreadCount} new
+                      </Badge>
+                    )}
+                  </div>
+
+                  {loading ? (
+                    <div className="text-center py-4 text-sm text-muted-foreground">
+                      Loading notifications...
+                    </div>
+                  ) : notifications.length === 0 ? (
+                    <div className="text-center py-4 text-sm text-muted-foreground">
+                      No notifications yet
+                    </div>
+                  ) : (
+                    <div className="space-y-2 max-h-96 overflow-y-auto">
+                      {notifications.map((notification) => (
+                        <div
+                          key={notification.id}
+                          className={cn(
+                            "p-3 rounded-lg border cursor-pointer transition-colors",
+                            notification.is_read
+                              ? "bg-background border-border"
+                              : "bg-blue-50 border-blue-200"
+                          )}
+                          onClick={() => {
+                            if (!notification.is_read) {
+                              markAsRead(notification.id);
+                            }
+                          }}
+                        >
+                          <div className="flex items-start gap-2">
+                            <div className="mt-1">
+                              {notification.type === "complaint_filed" ? (
+                                <AlertCircle className="h-4 w-4 text-orange-600" />
+                              ) : (
+                                <CheckCircle2 className="h-4 w-4 text-green-600" />
+                              )}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-foreground">
+                                {notification.type === "complaint_filed"
+                                  ? "New Complaint"
+                                  : notification.type === "task_assigned"
+                                    ? "Task Assigned"
+                                    : "Task Update"}
+                              </p>
+                              <p className="text-xs text-muted-foreground line-clamp-2">
+                                {notification.message}
+                              </p>
+                              <p className="text-xs text-muted-foreground mt-1">
+                                {new Date(notification.created_at).toLocaleDateString()} at{" "}
+                                {new Date(notification.created_at).toLocaleTimeString([], {
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })}
+                              </p>
+                            </div>
+                            {!notification.is_read && (
+                              <div className="h-2 w-2 rounded-full bg-blue-500 mt-2 flex-shrink-0" />
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </PopoverContent>
+            </Popover>
+
             <Link to="/staff">
               <Button variant="ghost" size="sm" className="text-xs">
                 <Briefcase className="h-4 w-4 mr-1" />
