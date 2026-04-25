@@ -60,22 +60,26 @@ ALTER TABLE public.complaints ENABLE ROW LEVEL SECURITY;
 
 -- User Profiles RLS Policies
 -- Users can read their own profile
-CREATE POLICY IF NOT EXISTS "Users can read own profile" ON public.user_profiles
+DROP POLICY IF EXISTS "Users can read own profile" ON public.user_profiles;
+CREATE POLICY "Users can read own profile" ON public.user_profiles
   FOR SELECT
   USING (auth.uid() = user_id);
 
 -- Users can update their own profile
-CREATE POLICY IF NOT EXISTS "Users can update own profile" ON public.user_profiles
+DROP POLICY IF EXISTS "Users can update own profile" ON public.user_profiles;
+CREATE POLICY "Users can update own profile" ON public.user_profiles
   FOR UPDATE
   USING (auth.uid() = user_id);
 
 -- Users can insert their own profile (during signup)
-CREATE POLICY IF NOT EXISTS "Users can insert own profile" ON public.user_profiles
+DROP POLICY IF EXISTS "Users can insert own profile" ON public.user_profiles;
+CREATE POLICY "Users can insert own profile" ON public.user_profiles
   FOR INSERT
   WITH CHECK (auth.uid() = user_id);
 
 -- Managers can read all profiles (optional - for management dashboard)
-CREATE POLICY IF NOT EXISTS "Managers can read all profiles" ON public.user_profiles
+DROP POLICY IF EXISTS "Managers can read all profiles" ON public.user_profiles;
+CREATE POLICY "Managers can read all profiles" ON public.user_profiles
   FOR SELECT
   USING (
     EXISTS (
@@ -86,22 +90,26 @@ CREATE POLICY IF NOT EXISTS "Managers can read all profiles" ON public.user_prof
 
 -- Complaints RLS Policies
 -- Users can read their own complaints
-CREATE POLICY IF NOT EXISTS "Users can read own complaints" ON public.complaints
+DROP POLICY IF EXISTS "Users can read own complaints" ON public.complaints;
+CREATE POLICY "Users can read own complaints" ON public.complaints
   FOR SELECT
   USING (user_id = auth.uid() OR email = auth.jwt() ->> 'email');
 
 -- Users can insert complaints (with or without auth)
-CREATE POLICY IF NOT EXISTS "Anyone can submit complaint" ON public.complaints
+DROP POLICY IF EXISTS "Anyone can submit complaint" ON public.complaints;
+CREATE POLICY "Anyone can submit complaint" ON public.complaints
   FOR INSERT
   WITH CHECK (true);
 
 -- Users can update their own complaints
-CREATE POLICY IF NOT EXISTS "Users can update own complaints" ON public.complaints
+DROP POLICY IF EXISTS "Users can update own complaints" ON public.complaints;
+CREATE POLICY "Users can update own complaints" ON public.complaints
   FOR UPDATE
   USING (user_id = auth.uid());
 
 -- Managers can read all complaints
-CREATE POLICY IF NOT EXISTS "Managers can read all complaints" ON public.complaints
+DROP POLICY IF EXISTS "Managers can read all complaints" ON public.complaints;
+CREATE POLICY "Managers can read all complaints" ON public.complaints
   FOR SELECT
   USING (
     EXISTS (
@@ -111,7 +119,8 @@ CREATE POLICY IF NOT EXISTS "Managers can read all complaints" ON public.complai
   );
 
 -- Managers can update all complaints
-CREATE POLICY IF NOT EXISTS "Managers can update all complaints" ON public.complaints
+DROP POLICY IF EXISTS "Managers can update all complaints" ON public.complaints;
+CREATE POLICY "Managers can update all complaints" ON public.complaints
   FOR UPDATE
   USING (
     EXISTS (
@@ -311,7 +320,8 @@ CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON public.notifications(
 ALTER TABLE public.tasks ENABLE ROW LEVEL SECURITY;
 
 -- Managers can read all tasks
-CREATE POLICY IF NOT EXISTS "Managers can read all tasks" ON public.tasks
+DROP POLICY IF EXISTS "Managers can read all tasks" ON public.tasks;
+CREATE POLICY "Managers can read all tasks" ON public.tasks
   FOR SELECT
   USING (
     EXISTS (
@@ -321,7 +331,8 @@ CREATE POLICY IF NOT EXISTS "Managers can read all tasks" ON public.tasks
   );
 
 -- Managers can create tasks
-CREATE POLICY IF NOT EXISTS "Managers can create tasks" ON public.tasks
+DROP POLICY IF EXISTS "Managers can create tasks" ON public.tasks;
+CREATE POLICY "Managers can create tasks" ON public.tasks
   FOR INSERT
   WITH CHECK (
     EXISTS (
@@ -331,7 +342,8 @@ CREATE POLICY IF NOT EXISTS "Managers can create tasks" ON public.tasks
   );
 
 -- Managers can update all tasks
-CREATE POLICY IF NOT EXISTS "Managers can update all tasks" ON public.tasks
+DROP POLICY IF EXISTS "Managers can update all tasks" ON public.tasks;
+CREATE POLICY "Managers can update all tasks" ON public.tasks
   FOR UPDATE
   USING (
     EXISTS (
@@ -341,7 +353,8 @@ CREATE POLICY IF NOT EXISTS "Managers can update all tasks" ON public.tasks
   );
 
 -- Service providers can read tasks assigned to them
-CREATE POLICY IF NOT EXISTS "Service providers can read assigned tasks" ON public.tasks
+DROP POLICY IF EXISTS "Service providers can read assigned tasks" ON public.tasks;
+CREATE POLICY "Service providers can read assigned tasks" ON public.tasks
   FOR SELECT
   USING (
     EXISTS (
@@ -356,17 +369,20 @@ CREATE POLICY IF NOT EXISTS "Service providers can read assigned tasks" ON publi
 ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
 
 -- Users can read their own notifications
-CREATE POLICY IF NOT EXISTS "Users can read own notifications" ON public.notifications
+DROP POLICY IF EXISTS "Users can read own notifications" ON public.notifications;
+CREATE POLICY "Users can read own notifications" ON public.notifications
   FOR SELECT
   USING (user_id = auth.uid());
 
 -- System can insert notifications (via trigger)
-CREATE POLICY IF NOT EXISTS "System can insert notifications" ON public.notifications
+DROP POLICY IF EXISTS "System can insert notifications" ON public.notifications;
+CREATE POLICY "System can insert notifications" ON public.notifications
   FOR INSERT
   WITH CHECK (true);
 
 -- Users can update their own notifications (mark as read)
-CREATE POLICY IF NOT EXISTS "Users can update own notifications" ON public.notifications
+DROP POLICY IF EXISTS "Users can update own notifications" ON public.notifications;
+CREATE POLICY "Users can update own notifications" ON public.notifications
   FOR UPDATE
   USING (user_id = auth.uid());
 
