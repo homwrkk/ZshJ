@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
   Crown,
   User,
@@ -23,12 +23,18 @@ import { Switch } from "../components/ui/switch";
 import { Badge } from "../components/ui/badge";
 
 const RegisterPage: React.FC = () => {
+  const navigate = useNavigate();
   const [step, setStep] = useState<
-    "info" | "preferences" | "verification" | "complete"
-  >("info");
+    "role" | "info" | "preferences" | "verification" | "complete"
+  >("role");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [formData, setFormData] = useState({
+    // User Role
+    role: "" as "guest" | "manager" | "service_provider" | "",
+    // Service Provider Fields
+    serviceType: "",
+    serviceCategory: "" as "internal" | "external" | "",
     // Personal Information
     firstName: "",
     lastName: "",
@@ -78,6 +84,20 @@ const RegisterPage: React.FC = () => {
   const validateStep = (currentStep: string) => {
     const newErrors: { [key: string]: string } = {};
 
+    if (currentStep === "role") {
+      if (!formData.role) {
+        newErrors.role = "Please select a user role";
+      }
+      if (formData.role === "service_provider") {
+        if (!formData.serviceType.trim()) {
+          newErrors.serviceType = "Service type is required";
+        }
+        if (!formData.serviceCategory) {
+          newErrors.serviceCategory = "Service category is required";
+        }
+      }
+    }
+
     if (currentStep === "info") {
       if (!formData.firstName.trim())
         newErrors.firstName = "First name is required";
@@ -106,6 +126,9 @@ const RegisterPage: React.FC = () => {
   const handleNext = () => {
     if (validateStep(step)) {
       switch (step) {
+        case "role":
+          setStep("info");
+          break;
         case "info":
           setStep("preferences");
           break;
@@ -127,6 +150,153 @@ const RegisterPage: React.FC = () => {
         : [...prev.interests, interest],
     }));
   };
+
+  const renderRoleSelection = () => (
+    <div className="space-y-6">
+      <div className="text-center mb-8">
+        <h2 className="text-2xl font-bold text-sheraton-navy mb-2">
+          Choose Your Account Type
+        </h2>
+        <p className="text-gray-600">
+          Select the role that best describes you to personalize your experience
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* Guest Role */}
+        <button
+          type="button"
+          onClick={() =>
+            setFormData((prev) => ({
+              ...prev,
+              role: "guest",
+              serviceType: "",
+              serviceCategory: "",
+            }))
+          }
+          className={`p-6 rounded-lg border-2 transition-all ${
+            formData.role === "guest"
+              ? "border-sheraton-gold bg-sheraton-cream"
+              : "border-gray-200 bg-white hover:border-sheraton-gold"
+          }`}
+        >
+          <div className="text-4xl mb-3">👤</div>
+          <h3 className="font-bold text-sheraton-navy mb-2">Guest</h3>
+          <p className="text-sm text-gray-600">
+            I'm a guest booking a stay or dining experience
+          </p>
+          {formData.role === "guest" && (
+            <div className="mt-4 text-sheraton-gold font-semibold">✓ Selected</div>
+          )}
+        </button>
+
+        {/* Manager Role */}
+        <button
+          type="button"
+          onClick={() =>
+            setFormData((prev) => ({
+              ...prev,
+              role: "manager",
+              serviceType: "",
+              serviceCategory: "",
+            }))
+          }
+          className={`p-6 rounded-lg border-2 transition-all ${
+            formData.role === "manager"
+              ? "border-sheraton-gold bg-sheraton-cream"
+              : "border-gray-200 bg-white hover:border-sheraton-gold"
+          }`}
+        >
+          <div className="text-4xl mb-3">👔</div>
+          <h3 className="font-bold text-sheraton-navy mb-2">Manager</h3>
+          <p className="text-sm text-gray-600">
+            I manage hotel operations and teams
+          </p>
+          {formData.role === "manager" && (
+            <div className="mt-4 text-sheraton-gold font-semibold">✓ Selected</div>
+          )}
+        </button>
+
+        {/* Service Provider Role */}
+        <button
+          type="button"
+          onClick={() =>
+            setFormData((prev) => ({
+              ...prev,
+              role: "service_provider",
+            }))
+          }
+          className={`p-6 rounded-lg border-2 transition-all ${
+            formData.role === "service_provider"
+              ? "border-sheraton-gold bg-sheraton-cream"
+              : "border-gray-200 bg-white hover:border-sheraton-gold"
+          }`}
+        >
+          <div className="text-4xl mb-3">🔧</div>
+          <h3 className="font-bold text-sheraton-navy mb-2">Service Provider</h3>
+          <p className="text-sm text-gray-600">
+            I provide services (internal staff or external vendor)
+          </p>
+          {formData.role === "service_provider" && (
+            <div className="mt-4 text-sheraton-gold font-semibold">✓ Selected</div>
+          )}
+        </button>
+      </div>
+
+      {/* Service Provider Details */}
+      {formData.role === "service_provider" && (
+        <div className="bg-sheraton-cream rounded-lg p-6 space-y-4">
+          <h3 className="font-semibold text-sheraton-navy">Service Provider Details</h3>
+
+          <div className="space-y-2">
+            <label className="block text-sm font-medium">Service Type *</label>
+            <input
+              type="text"
+              placeholder="e.g., Plumbing, Electrical, Housekeeping, Maintenance"
+              value={formData.serviceType}
+              onChange={(e) =>
+                setFormData((prev) => ({
+                  ...prev,
+                  serviceType: e.target.value,
+                }))
+              }
+              className="w-full px-3 py-2 border rounded-md border-gray-300"
+            />
+            {errors.serviceType && (
+              <p className="text-red-500 text-sm">{errors.serviceType}</p>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <label className="block text-sm font-medium">Service Category *</label>
+            <select
+              value={formData.serviceCategory}
+              onChange={(e) =>
+                setFormData((prev) => ({
+                  ...prev,
+                  serviceCategory: e.target.value as "internal" | "external" | "",
+                }))
+              }
+              className="w-full px-3 py-2 border rounded-md border-gray-300"
+            >
+              <option value="">Select category</option>
+              <option value="internal">Internal Staff</option>
+              <option value="external">External Vendor</option>
+            </select>
+            {errors.serviceCategory && (
+              <p className="text-red-500 text-sm">{errors.serviceCategory}</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {errors.role && (
+        <p className="text-red-500 text-sm text-center bg-red-50 p-3 rounded">
+          {errors.role}
+        </p>
+      )}
+    </div>
+  );
 
   const renderPersonalInfo = () => (
     <div className="space-y-6">
@@ -665,8 +835,9 @@ const RegisterPage: React.FC = () => {
   );
 
   const renderStepIndicator = () => (
-    <div className="flex items-center justify-center space-x-4 mb-8">
+    <div className="flex items-center justify-center space-x-4 mb-8 flex-wrap">
       {[
+        { id: "role", label: "Account Type", icon: Shield },
         { id: "info", label: "Account Info", icon: User },
         { id: "preferences", label: "Preferences", icon: Settings },
         { id: "verification", label: "Verification", icon: Shield },
@@ -674,11 +845,12 @@ const RegisterPage: React.FC = () => {
       ].map((stepItem, index) => {
         const isActive = step === stepItem.id;
         const isCompleted =
-          (step === "preferences" && stepItem.id === "info") ||
+          (step === "info" && stepItem.id === "role") ||
+          (step === "preferences" && ["role", "info"].includes(stepItem.id)) ||
           (step === "verification" &&
-            ["info", "preferences"].includes(stepItem.id)) ||
+            ["role", "info", "preferences"].includes(stepItem.id)) ||
           (step === "complete" &&
-            ["info", "preferences", "verification"].includes(stepItem.id));
+            ["role", "info", "preferences", "verification"].includes(stepItem.id));
 
         return (
           <div key={stepItem.id} className="flex items-center">
@@ -700,7 +872,7 @@ const RegisterPage: React.FC = () => {
             >
               {stepItem.label}
             </span>
-            {index < 3 && (
+            {index < 4 && (
               <div
                 className={`w-8 h-0.5 mx-4 ${
                   isCompleted ? "bg-green-500" : "bg-gray-200"
@@ -720,6 +892,7 @@ const RegisterPage: React.FC = () => {
           {step !== "complete" && renderStepIndicator()}
 
           <div className="bg-white rounded-xl shadow-lg p-8">
+            {step === "role" && renderRoleSelection()}
             {step === "info" && renderPersonalInfo()}
             {step === "preferences" && renderPreferences()}
             {step === "verification" && renderVerification()}
@@ -727,11 +900,14 @@ const RegisterPage: React.FC = () => {
 
             {step !== "complete" && (
               <div className="flex space-x-4 mt-8">
-                {step !== "info" && (
+                {step !== "role" && (
                   <Button
                     variant="outline"
                     onClick={() => {
                       switch (step) {
+                        case "info":
+                          setStep("role");
+                          break;
                         case "preferences":
                           setStep("info");
                           break;
@@ -757,7 +933,7 @@ const RegisterPage: React.FC = () => {
             )}
           </div>
 
-          {step === "info" && (
+          {step === "role" && (
             <div className="text-center mt-6">
               <p className="text-gray-600">
                 Already have an account?{" "}

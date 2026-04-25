@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { Link } from "react-router-dom";
+import React, { useState, useEffect } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
   Card,
   CardContent,
@@ -67,12 +67,49 @@ interface Message {
 }
 
 const TasksPage: React.FC = () => {
-  const [activeTab, setActiveTab] = useState("new-task");
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  // Determine active tab from URL path
+  const getTabFromPath = () => {
+    if (location.pathname.includes("/tasks/list")) return "todo-list";
+    if (location.pathname.includes("/tasks/chat")) return "live-chat";
+    return "new-task";
+  };
+
+  const [activeTab, setActiveTab] = useState(getTabFromPath());
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [searchQuery, setSearchQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [selectedTask, setSelectedTask] = useState<string | null>(null);
   const [chatMessage, setChatMessage] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Form state
+  const [formData, setFormData] = useState({
+    title: "",
+    description: "",
+    priority: "",
+    category: "",
+    assignmentType: "",
+    assignee: "",
+    dueDate: "",
+    estimatedTime: "",
+    paymentTerms: "",
+  });
+
+  // Sync URL with tab changes
+  useEffect(() => {
+    const newTab = getTabFromPath();
+    setActiveTab(newTab);
+  }, [location.pathname]);
+
+  const handleTabChange = (tab: string) => {
+    setActiveTab(tab);
+    if (tab === "new-task") navigate("/tasks/new");
+    else if (tab === "todo-list") navigate("/tasks/list");
+    else if (tab === "live-chat") navigate("/tasks/chat");
+  };
 
   // Mock tasks data
   const [tasks, setTasks] = useState<Task[]>([
@@ -191,6 +228,74 @@ const TasksPage: React.FC = () => {
     return matchesSearch && matchesFilter;
   });
 
+  // Calculate dashboard stats
+  const stats = {
+    open: tasks.filter((t) => ["in-progress", "flagged"].includes(t.status)).length,
+    urgent: tasks.filter((t) => t.priority === "urgent").length,
+    completedToday: tasks.filter(
+      (t) =>
+        t.status === "completed" &&
+        new Date(t.createdAt).toDateString() === new Date().toDateString()
+    ).length,
+    awaitingChat: messages.filter(
+      (m) => {
+        const task = tasks.find((t) => t.id === m.taskId);
+        return task && ["in-progress", "flagged"].includes(task.status);
+      }
+    ).length,
+  };
+
+  const handleFormChange = (field: string, value: string) => {
+    setFormData((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleCreateTask = async () => {
+    if (!formData.title || !formData.priority || !formData.category) {
+      alert("Please fill in all required fields");
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      // Simulate API call
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      const newTask: Task = {
+        id: `TASK-${String(tasks.length + 1).padStart(3, "0")}`,
+        title: formData.title,
+        description: formData.description,
+        priority: formData.priority as Task["priority"],
+        status: "in-progress",
+        category: formData.category as Task["category"],
+        assignedTo: formData.assignee || "Unassigned",
+        dueDate: formData.dueDate,
+        createdAt: new Date().toISOString(),
+        estimatedTime: formData.estimatedTime || "Not specified",
+        assignmentType: (formData.assignmentType || "internal") as "internal" | "external",
+        checklist: [],
+      };
+
+      setTasks([...tasks, newTask]);
+
+      // Reset form
+      setFormData({
+        title: "",
+        description: "",
+        priority: "",
+        category: "",
+        assignmentType: "",
+        assignee: "",
+        dueDate: "",
+        estimatedTime: "",
+        paymentTerms: "",
+      });
+
+      alert("Task created successfully!");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const handleSendMessage = () => {
     if (!chatMessage.trim() || !selectedTask) return;
 
@@ -210,7 +315,7 @@ const TasksPage: React.FC = () => {
     <div className="min-h-screen bg-gradient-to-b from-sheraton-cream to-background">
       <div className="container py-8">
         {/* Header */}
-        <div className="text-center mb-8">
+        <div className="text-center mb-12">
           <div className="flex items-center justify-center mb-4">
             <CheckSquare className="h-8 w-8 text-sheraton-gold mr-2" />
             <Badge className="bg-sheraton-gold text-sheraton-navy px-4 py-2">
@@ -225,19 +330,79 @@ const TasksPage: React.FC = () => {
           </p>
         </div>
 
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="new-task" className="flex items-center gap-2">
+        {/* Dashboard Stats */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+          <Card className="border-l-4 border-l-blue-500 sheraton-gradient text-white">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm opacity-90 mb-1">Open Tasks</p>
+                  <p className="text-3xl font-bold">{stats.open}</p>
+                </div>
+                <Clock className="h-10 w-10 opacity-30" />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-l-4 border-l-red-500">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground mb-1">Urgent Tasks</p>
+                  <p className="text-3xl font-bold text-red-600">{stats.urgent}</p>
+                </div>
+                <AlertCircle className="h-10 w-10 text-red-500 opacity-30" />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-l-4 border-l-green-500">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground mb-1">Completed Today</p>
+                  <p className="text-3xl font-bold text-green-600">{stats.completedToday}</p>
+                </div>
+                <CheckCircle className="h-10 w-10 text-green-500 opacity-30" />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-l-4 border-l-sheraton-gold">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground mb-1">Active Chats</p>
+                  <p className="text-3xl font-bold text-sheraton-gold">{stats.awaitingChat}</p>
+                </div>
+                <MessageSquare className="h-10 w-10 text-sheraton-gold opacity-30" />
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
+          <TabsList className="grid w-full grid-cols-3 bg-white border border-gray-200">
+            <TabsTrigger
+              value="new-task"
+              className="flex items-center gap-2 data-[state=active]:sheraton-gradient data-[state=active]:text-white"
+            >
               <PlusCircle className="h-4 w-4" />
               New Task
             </TabsTrigger>
-            <TabsTrigger value="todo-list" className="flex items-center gap-2">
+            <TabsTrigger
+              value="todo-list"
+              className="flex items-center gap-2 data-[state=active]:sheraton-gradient data-[state=active]:text-white"
+            >
               <CheckSquare className="h-4 w-4" />
-              To do List
+              Task List
             </TabsTrigger>
-            <TabsTrigger value="live-chat" className="flex items-center gap-2">
+            <TabsTrigger
+              value="live-chat"
+              className="flex items-center gap-2 data-[state=active]:sheraton-gradient data-[state=active]:text-white"
+            >
               <MessageSquare className="h-4 w-4" />
-              Live Chat
+              Chat & Updates
             </TabsTrigger>
           </TabsList>
 
@@ -262,6 +427,8 @@ const TasksPage: React.FC = () => {
                       <Input
                         id="task-title"
                         placeholder="e.g., Fix HVAC System"
+                        value={formData.title}
+                        onChange={(e) => handleFormChange("title", e.target.value)}
                       />
                     </div>
 
@@ -271,13 +438,15 @@ const TasksPage: React.FC = () => {
                         id="task-desc"
                         placeholder="Detailed task description..."
                         rows={4}
+                        value={formData.description}
+                        onChange={(e) => handleFormChange("description", e.target.value)}
                       />
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label>Priority *</Label>
-                        <Select>
+                        <Select value={formData.priority} onValueChange={(value) => handleFormChange("priority", value)}>
                           <SelectTrigger>
                             <SelectValue placeholder="Select priority" />
                           </SelectTrigger>
@@ -292,7 +461,7 @@ const TasksPage: React.FC = () => {
 
                       <div className="space-y-2">
                         <Label>Category *</Label>
-                        <Select>
+                        <Select value={formData.category} onValueChange={(value) => handleFormChange("category", value)}>
                           <SelectTrigger>
                             <SelectValue placeholder="Select category" />
                           </SelectTrigger>
@@ -309,7 +478,7 @@ const TasksPage: React.FC = () => {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label>Assignment Type *</Label>
-                        <Select>
+                        <Select value={formData.assignmentType} onValueChange={(value) => handleFormChange("assignmentType", value)}>
                           <SelectTrigger>
                             <SelectValue placeholder="Select type" />
                           </SelectTrigger>
@@ -322,15 +491,15 @@ const TasksPage: React.FC = () => {
 
                       <div className="space-y-2">
                         <Label>Assign To *</Label>
-                        <Select>
+                        <Select value={formData.assignee} onValueChange={(value) => handleFormChange("assignee", value)}>
                           <SelectTrigger>
                             <SelectValue placeholder="Select assignee" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="internal-1">John Smith - Maintenance</SelectItem>
-                            <SelectItem value="internal-2">Sarah Johnson - Housekeeping</SelectItem>
-                            <SelectItem value="external-1">ABC Plumbing - Plumbing</SelectItem>
-                            <SelectItem value="external-2">XYZ Electric - Electrical</SelectItem>
+                            <SelectItem value="John Smith - Maintenance">John Smith - Maintenance</SelectItem>
+                            <SelectItem value="Sarah Johnson - Housekeeping">Sarah Johnson - Housekeeping</SelectItem>
+                            <SelectItem value="ABC Plumbing - Plumbing">ABC Plumbing - Plumbing</SelectItem>
+                            <SelectItem value="XYZ Electric - Electrical">XYZ Electric - Electrical</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
@@ -339,12 +508,16 @@ const TasksPage: React.FC = () => {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label>Due Date *</Label>
-                        <Input type="date" />
+                        <Input
+                          type="date"
+                          value={formData.dueDate}
+                          onChange={(e) => handleFormChange("dueDate", e.target.value)}
+                        />
                       </div>
 
                       <div className="space-y-2">
                         <Label>Estimated Time</Label>
-                        <Select>
+                        <Select value={formData.estimatedTime} onValueChange={(value) => handleFormChange("estimatedTime", value)}>
                           <SelectTrigger>
                             <SelectValue placeholder="Select duration" />
                           </SelectTrigger>
@@ -361,52 +534,63 @@ const TasksPage: React.FC = () => {
 
                     <div className="space-y-2">
                       <Label>Payment Terms (for external vendors)</Label>
-                      <Input placeholder="e.g., 50% upfront, balance upon completion" />
+                      <Input
+                        placeholder="e.g., 50% upfront, balance upon completion"
+                        value={formData.paymentTerms}
+                        onChange={(e) => handleFormChange("paymentTerms", e.target.value)}
+                      />
                     </div>
 
                     <div className="space-y-2">
                       <Label>Attachments</Label>
-                      <div className="border-2 border-dashed rounded-lg p-6 text-center">
+                      <div className="border-2 border-dashed border-sheraton-gold rounded-lg p-6 text-center hover:bg-sheraton-cream transition-colors">
                         <p className="text-sm text-muted-foreground">
                           Drag and drop files here or click to upload
                         </p>
                       </div>
                     </div>
 
-                    <Button className="w-full sheraton-gradient text-white">
+                    <Button
+                      onClick={handleCreateTask}
+                      disabled={isSubmitting}
+                      className="w-full sheraton-gradient text-white hover:opacity-90"
+                    >
                       <Send className="h-4 w-4 mr-2" />
-                      Create & Send Task
+                      {isSubmitting ? "Creating Task..." : "Create & Send Task"}
                     </Button>
                   </div>
 
                   {/* Sidebar */}
                   <div className="space-y-4">
-                    <Card className="bg-blue-50 border-blue-200">
+                    <Card className="bg-gradient-to-br from-sheraton-cream to-white border-sheraton-gold border-2">
                       <CardHeader>
-                        <CardTitle className="text-base">Task Tips</CardTitle>
+                        <CardTitle className="text-base text-sheraton-navy flex items-center gap-2">
+                          <Flag className="h-5 w-5 text-sheraton-gold" />
+                          Task Tips
+                        </CardTitle>
                       </CardHeader>
-                      <CardContent className="text-sm space-y-3">
-                        <div>
-                          <p className="font-semibold text-blue-900 mb-1">
+                      <CardContent className="text-sm space-y-4">
+                        <div className="p-3 bg-white rounded-lg border-l-4 border-l-sheraton-gold">
+                          <p className="font-semibold text-sheraton-navy mb-1">
                             Clear Instructions
                           </p>
-                          <p className="text-blue-700">
+                          <p className="text-gray-600 text-xs">
                             Provide detailed descriptions with expected outcomes
                           </p>
                         </div>
-                        <div>
-                          <p className="font-semibold text-blue-900 mb-1">
+                        <div className="p-3 bg-white rounded-lg border-l-4 border-l-sheraton-gold">
+                          <p className="font-semibold text-sheraton-navy mb-1">
                             Realistic Deadlines
                           </p>
-                          <p className="text-blue-700">
+                          <p className="text-gray-600 text-xs">
                             Allow adequate time for quality work
                           </p>
                         </div>
-                        <div>
-                          <p className="font-semibold text-blue-900 mb-1">
+                        <div className="p-3 bg-white rounded-lg border-l-4 border-l-sheraton-gold">
+                          <p className="font-semibold text-sheraton-navy mb-1">
                             Payment Terms
                           </p>
-                          <p className="text-blue-700">
+                          <p className="text-gray-600 text-xs">
                             Be clear about payment schedules for external work
                           </p>
                         </div>
@@ -421,112 +605,136 @@ const TasksPage: React.FC = () => {
           {/* To do List Tab */}
           <TabsContent value="todo-list" className="space-y-6">
             {/* Toolbar */}
-            <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
-              <div className="flex-1 flex gap-2">
-                <div className="flex-1 relative">
-                  <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Search tasks..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-10"
-                  />
+            <Card className="p-4 border border-gray-200">
+              <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
+                <div className="flex-1 flex gap-2 w-full md:w-auto">
+                  <div className="flex-1 relative">
+                    <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Search tasks..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="pl-10 border-gray-200"
+                    />
+                  </div>
+
+                  <Select value={filterStatus} onValueChange={setFilterStatus}>
+                    <SelectTrigger className="w-40 border-gray-200">
+                      <Filter className="h-4 w-4 mr-2" />
+                      <SelectValue placeholder="Filter" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Status</SelectItem>
+                      <SelectItem value="in-progress">In Progress</SelectItem>
+                      <SelectItem value="flagged">Flagged</SelectItem>
+                      <SelectItem value="completed">Completed</SelectItem>
+                      <SelectItem value="approved">Approved</SelectItem>
+                      <SelectItem value="invoiced">Invoiced</SelectItem>
+                      <SelectItem value="paid">Paid</SelectItem>
+                      <SelectItem value="archived">Archived</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
 
-                <Select value={filterStatus} onValueChange={setFilterStatus}>
-                  <SelectTrigger className="w-40">
-                    <Filter className="h-4 w-4 mr-2" />
-                    <SelectValue placeholder="Filter by status" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Status</SelectItem>
-                    <SelectItem value="in-progress">In Progress</SelectItem>
-                    <SelectItem value="flagged">Flagged</SelectItem>
-                    <SelectItem value="completed">Completed</SelectItem>
-                    <SelectItem value="approved">Approved</SelectItem>
-                    <SelectItem value="invoiced">Invoiced</SelectItem>
-                    <SelectItem value="paid">Paid</SelectItem>
-                    <SelectItem value="archived">Archived</SelectItem>
-                  </SelectContent>
-                </Select>
+                <div className="flex gap-2 border-l pl-4">
+                  <Button
+                    variant={viewMode === "grid" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setViewMode("grid")}
+                    className={viewMode === "grid" ? "sheraton-gradient text-white" : ""}
+                    title="Grid view"
+                  >
+                    <Grid3x3 className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant={viewMode === "list" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setViewMode("list")}
+                    className={viewMode === "list" ? "sheraton-gradient text-white" : ""}
+                    title="List view"
+                  >
+                    <List className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
-
-              <div className="flex gap-2">
-                <Button
-                  variant={viewMode === "grid" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setViewMode("grid")}
-                >
-                  <Grid3x3 className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant={viewMode === "list" ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setViewMode("list")}
-                >
-                  <List className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
+            </Card>
 
             {/* Tasks Display */}
             <div
               className={
                 viewMode === "grid"
-                  ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
+                  ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5"
                   : "space-y-4"
               }
             >
               {filteredTasks.map((task) => (
-                <Card key={task.id} className={getStatusColor(task.status)}>
-                  <CardContent className="p-4">
-                    <div className="flex items-start justify-between mb-3">
-                      <div className="flex items-start gap-2 flex-1">
-                        {getStatusIcon(task.status)}
-                        <div className="flex-1">
-                          <h3 className="font-semibold text-sheraton-navy">
+                <Card
+                  key={task.id}
+                  className={`${getStatusColor(task.status)} hover:shadow-lg transition-shadow overflow-hidden`}
+                >
+                  <CardContent className="p-6">
+                    {/* Header with Status and Priority */}
+                    <div className="flex items-start justify-between mb-4 pb-4 border-b">
+                      <div className="flex items-start gap-3 flex-1">
+                        <div className="p-2 bg-white rounded-lg flex-shrink-0">
+                          {getStatusIcon(task.status)}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-semibold text-sheraton-gold uppercase tracking-wide">
                             {task.id}
+                          </p>
+                          <h3 className="font-bold text-sheraton-navy mt-1 line-clamp-2 hover:text-sheraton-gold transition-colors">
+                            {task.title}
                           </h3>
-                          <p className="font-medium">{task.title}</p>
                         </div>
                       </div>
-                      <Badge className={getPriorityColor(task.priority)}>
-                        {task.priority}
+                      <Badge className={`${getPriorityColor(task.priority)} font-semibold flex-shrink-0 ml-2`}>
+                        {task.priority.charAt(0).toUpperCase() + task.priority.slice(1)}
                       </Badge>
                     </div>
 
-                    <p className="text-sm text-muted-foreground mb-3">
+                    {/* Description */}
+                    <p className="text-sm text-gray-600 mb-4 line-clamp-2">
                       {task.description}
                     </p>
 
-                    <div className="space-y-2 text-sm mb-3">
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Assigned to:</span>
-                        <span className="font-medium">{task.assignedTo}</span>
+                    {/* Task Details Grid */}
+                    <div className="space-y-3 mb-5 text-sm">
+                      <div className="flex justify-between items-center">
+                        <span className="text-gray-500 text-xs font-medium">ASSIGNED</span>
+                        <span className="font-semibold text-gray-900">{task.assignedTo}</span>
                       </div>
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Due:</span>
-                        <span className="font-medium">{task.dueDate}</span>
+                      <div className="flex justify-between items-center">
+                        <span className="text-gray-500 text-xs font-medium">DUE</span>
+                        <span className="font-semibold text-gray-900">{task.dueDate}</span>
                       </div>
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Est. Time:</span>
-                        <span className="font-medium">{task.estimatedTime}</span>
+                      <div className="flex justify-between items-center">
+                        <span className="text-gray-500 text-xs font-medium">ESTIMATE</span>
+                        <span className="font-semibold text-gray-900">{task.estimatedTime}</span>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline">
-                        {task.status.replace("-", " ")}
+                    {/* Action Buttons */}
+                    <div className="flex items-center gap-2 pt-4 border-t">
+                      <Badge
+                        variant="outline"
+                        className="bg-white"
+                      >
+                        {task.status
+                          .split("-")
+                          .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+                          .join(" ")}
                       </Badge>
                       <Button
                         size="sm"
-                        variant="outline"
+                        variant="ghost"
                         onClick={() => {
                           setSelectedTask(task.id);
-                          setActiveTab("live-chat");
+                          handleTabChange("live-chat");
                         }}
+                        className="ml-auto hover:bg-sheraton-gold hover:text-white"
                       >
-                        <MessageSquare className="h-3 w-3 mr-1" />
+                        <MessageSquare className="h-4 w-4 mr-1" />
                         Chat
                       </Button>
                     </div>
@@ -536,13 +744,22 @@ const TasksPage: React.FC = () => {
             </div>
 
             {filteredTasks.length === 0 && (
-              <Card>
-                <CardContent className="p-8 text-center">
-                  <AlertCircle className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                  <p className="text-lg text-muted-foreground">No tasks found</p>
-                  <p className="text-sm text-muted-foreground">
-                    Try adjusting your search or filters
+              <Card className="col-span-full border-2 border-dashed border-sheraton-gold bg-sheraton-cream">
+                <CardContent className="p-12 text-center">
+                  <div className="flex justify-center mb-6">
+                    <CheckSquare className="h-16 w-16 text-sheraton-gold opacity-40" />
+                  </div>
+                  <h3 className="text-xl font-semibold text-sheraton-navy mb-2">No tasks found</h3>
+                  <p className="text-muted-foreground mb-6 max-w-sm mx-auto">
+                    Try adjusting your search or filters, or create a new task to get started
                   </p>
+                  <Button
+                    onClick={() => handleTabChange("new-task")}
+                    className="sheraton-gradient text-white"
+                  >
+                    <PlusCircle className="h-4 w-4 mr-2" />
+                    Create New Task
+                  </Button>
                 </CardContent>
               </Card>
             )}
@@ -553,34 +770,53 @@ const TasksPage: React.FC = () => {
             {selectedTask ? (
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {/* Chat Area */}
-                <Card className="lg:col-span-2">
-                  <CardHeader>
-                    <CardTitle>
-                      Task: {tasks.find((t) => t.id === selectedTask)?.id}
-                    </CardTitle>
+                <Card className="lg:col-span-2 flex flex-col">
+                  <CardHeader className="border-b bg-gradient-to-r from-sheraton-cream to-white">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-xs font-semibold text-sheraton-gold uppercase tracking-wide mb-1">Task</p>
+                        <CardTitle className="text-sheraton-navy">
+                          {tasks.find((t) => t.id === selectedTask)?.title}
+                        </CardTitle>
+                      </div>
+                      <Badge className="sheraton-gradient text-white">
+                        {tasks.find((t) => t.id === selectedTask)?.priority}
+                      </Badge>
+                    </div>
                   </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="bg-gray-50 rounded-lg p-4 h-80 overflow-y-auto space-y-4">
+                  <CardContent className="space-y-4 flex-1 flex flex-col p-6">
+                    <div className="bg-white rounded-lg p-4 h-80 overflow-y-auto space-y-4 border border-gray-200">
                       {messages
                         .filter((m) => m.taskId === selectedTask)
-                        .map((message) => (
-                          <div key={message.id} className="space-y-1">
-                            <div className="flex items-center gap-2">
-                              <span className="font-semibold text-sm">
-                                {message.author}
-                              </span>
-                              <span className="text-xs text-muted-foreground">
-                                {new Date(message.timestamp).toLocaleTimeString()}
-                              </span>
+                        .length === 0 ? (
+                        <div className="flex items-center justify-center h-full text-muted-foreground">
+                          <p className="text-sm">No messages yet. Start the conversation!</p>
+                        </div>
+                      ) : (
+                        messages
+                          .filter((m) => m.taskId === selectedTask)
+                          .map((message) => (
+                            <div key={message.id} className="space-y-1">
+                              <div className="flex items-center gap-2">
+                                <span className="font-semibold text-sm text-sheraton-navy">
+                                  {message.author}
+                                </span>
+                                <span className="text-xs text-muted-foreground">
+                                  {new Date(message.timestamp).toLocaleTimeString([], {
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                  })}
+                                </span>
+                              </div>
+                              <p className="text-sm text-gray-700 bg-sheraton-cream p-3 rounded-lg">
+                                {message.content}
+                              </p>
                             </div>
-                            <p className="text-sm text-gray-700 bg-white p-2 rounded">
-                              {message.content}
-                            </p>
-                          </div>
-                        ))}
+                          ))
+                      )}
                     </div>
 
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 mt-auto">
                       <Input
                         placeholder="Type your message..."
                         value={chatMessage}
@@ -588,10 +824,12 @@ const TasksPage: React.FC = () => {
                         onKeyPress={(e) => {
                           if (e.key === "Enter") handleSendMessage();
                         }}
+                        className="border-gray-200"
                       />
                       <Button
                         onClick={handleSendMessage}
-                        className="sheraton-gradient text-white"
+                        className="sheraton-gradient text-white hover:opacity-90"
+                        disabled={!chatMessage.trim()}
                       >
                         <Send className="h-4 w-4" />
                       </Button>
@@ -599,44 +837,53 @@ const TasksPage: React.FC = () => {
                   </CardContent>
                 </Card>
 
-                {/* Task Details */}
-                <Card>
+                {/* Task Details Sidebar */}
+                <Card className="bg-gradient-to-b from-sheraton-cream to-white border-sheraton-gold">
                   <CardHeader>
-                    <CardTitle>Task Details</CardTitle>
+                    <CardTitle className="text-sheraton-navy">Task Details</CardTitle>
                   </CardHeader>
-                  <CardContent className="space-y-4 text-sm">
+                  <CardContent className="space-y-6 text-sm">
                     {tasks.find((t) => t.id === selectedTask) && (
                       <>
                         <div>
-                          <p className="text-muted-foreground">Title</p>
-                          <p className="font-semibold">
-                            {tasks.find((t) => t.id === selectedTask)?.title}
+                          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">ID</p>
+                          <p className="font-semibold text-sheraton-navy font-mono">
+                            {tasks.find((t) => t.id === selectedTask)?.id}
                           </p>
                         </div>
                         <div>
-                          <p className="text-muted-foreground">Priority</p>
+                          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Priority</p>
                           <Badge
-                            className={getPriorityColor(
+                            className={`${getPriorityColor(
                               tasks.find((t) => t.id === selectedTask)?.priority || ""
-                            )}
+                            )} font-semibold`}
                           >
-                            {tasks.find((t) => t.id === selectedTask)?.priority}
+                            {tasks.find((t) => t.id === selectedTask)?.priority
+                              .charAt(0)
+                              .toUpperCase() +
+                              tasks.find((t) => t.id === selectedTask)?.priority.slice(1)}
                           </Badge>
                         </div>
                         <div>
-                          <p className="text-muted-foreground">Assigned To</p>
-                          <p className="font-semibold">
-                            {
-                              tasks.find((t) => t.id === selectedTask)
-                                ?.assignedTo
-                            }
+                          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Assigned To</p>
+                          <p className="font-semibold text-sheraton-navy">
+                            {tasks.find((t) => t.id === selectedTask)?.assignedTo}
                           </p>
                         </div>
                         <div>
-                          <p className="text-muted-foreground">Due Date</p>
-                          <p className="font-semibold">
+                          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Due Date</p>
+                          <p className="font-semibold text-sheraton-navy">
                             {tasks.find((t) => t.id === selectedTask)?.dueDate}
                           </p>
+                        </div>
+                        <div>
+                          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Status</p>
+                          <Badge variant="outline" className="bg-white">
+                            {tasks.find((t) => t.id === selectedTask)?.status
+                              .split("-")
+                              .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+                              .join(" ")}
+                          </Badge>
                         </div>
                       </>
                     )}
@@ -644,15 +891,24 @@ const TasksPage: React.FC = () => {
                 </Card>
               </div>
             ) : (
-              <Card>
-                <CardContent className="p-8 text-center">
-                  <MessageSquare className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                  <p className="text-lg text-muted-foreground">
+              <Card className="border-2 border-dashed border-sheraton-gold bg-sheraton-cream">
+                <CardContent className="p-12 text-center">
+                  <div className="flex justify-center mb-6">
+                    <MessageSquare className="h-16 w-16 text-sheraton-gold opacity-40" />
+                  </div>
+                  <h3 className="text-xl font-semibold text-sheraton-navy mb-2">
                     Select a task to view chat
+                  </h3>
+                  <p className="text-muted-foreground mb-6 max-w-sm mx-auto">
+                    Click "Chat" on any task from the Task List tab to start or view conversations
                   </p>
-                  <p className="text-sm text-muted-foreground">
-                    Click "Chat" on any task from the To do List
-                  </p>
+                  <Button
+                    onClick={() => handleTabChange("todo-list")}
+                    className="sheraton-gradient text-white"
+                  >
+                    <CheckSquare className="h-4 w-4 mr-2" />
+                    Go to Task List
+                  </Button>
                 </CardContent>
               </Card>
             )}
