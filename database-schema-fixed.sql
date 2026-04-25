@@ -13,14 +13,12 @@ CREATE TABLE IF NOT EXISTS public.user_profiles (
   last_name VARCHAR(100),
   phone VARCHAR(20),
   room_number VARCHAR(10),
-  -- Service provider fields
   service_type VARCHAR(100),
   service_category VARCHAR(50) CHECK (service_category IN ('internal', 'external')),
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Create index for faster lookups
 CREATE INDEX IF NOT EXISTS idx_user_profiles_email ON public.user_profiles(email);
 CREATE INDEX IF NOT EXISTS idx_user_profiles_role ON public.user_profiles(role);
 CREATE INDEX IF NOT EXISTS idx_user_profiles_user_id ON public.user_profiles(user_id);
@@ -43,7 +41,6 @@ CREATE TABLE IF NOT EXISTS public.complaints (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Create indexes for complaints
 CREATE INDEX IF NOT EXISTS idx_complaints_user_id ON public.complaints(user_id);
 CREATE INDEX IF NOT EXISTS idx_complaints_email ON public.complaints(email);
 CREATE INDEX IF NOT EXISTS idx_complaints_status ON public.complaints(status);
@@ -51,34 +48,36 @@ CREATE INDEX IF NOT EXISTS idx_complaints_priority ON public.complaints(priority
 CREATE INDEX IF NOT EXISTS idx_complaints_created_at ON public.complaints(created_at DESC);
 
 -- ============================================================================
--- ROW LEVEL SECURITY (RLS) POLICIES
+-- ENABLE RLS AND DROP OLD POLICIES
 -- ============================================================================
-
--- Enable RLS on tables
 ALTER TABLE public.user_profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.complaints ENABLE ROW LEVEL SECURITY;
 
--- User Profiles RLS Policies
--- Users can read their own profile
 DROP POLICY IF EXISTS "Users can read own profile" ON public.user_profiles;
+DROP POLICY IF EXISTS "Users can update own profile" ON public.user_profiles;
+DROP POLICY IF EXISTS "Users can insert own profile" ON public.user_profiles;
+DROP POLICY IF EXISTS "Managers can read all profiles" ON public.user_profiles;
+DROP POLICY IF EXISTS "Users can read own complaints" ON public.complaints;
+DROP POLICY IF EXISTS "Anyone can submit complaint" ON public.complaints;
+DROP POLICY IF EXISTS "Users can update own complaints" ON public.complaints;
+DROP POLICY IF EXISTS "Managers can read all complaints" ON public.complaints;
+DROP POLICY IF EXISTS "Managers can update all complaints" ON public.complaints;
+
+-- ============================================================================
+-- CREATE RLS POLICIES FOR USER PROFILES
+-- ============================================================================
 CREATE POLICY "Users can read own profile" ON public.user_profiles
   FOR SELECT
   USING (auth.uid() = user_id);
 
--- Users can update their own profile
-DROP POLICY IF EXISTS "Users can update own profile" ON public.user_profiles;
 CREATE POLICY "Users can update own profile" ON public.user_profiles
   FOR UPDATE
   USING (auth.uid() = user_id);
 
--- Users can insert their own profile (during signup)
-DROP POLICY IF EXISTS "Users can insert own profile" ON public.user_profiles;
 CREATE POLICY "Users can insert own profile" ON public.user_profiles
   FOR INSERT
   WITH CHECK (auth.uid() = user_id);
 
--- Managers can read all profiles (optional - for management dashboard)
-DROP POLICY IF EXISTS "Managers can read all profiles" ON public.user_profiles;
 CREATE POLICY "Managers can read all profiles" ON public.user_profiles
   FOR SELECT
   USING (
@@ -88,27 +87,21 @@ CREATE POLICY "Managers can read all profiles" ON public.user_profiles
     )
   );
 
--- Complaints RLS Policies
--- Users can read their own complaints
-DROP POLICY IF EXISTS "Users can read own complaints" ON public.complaints;
+-- ============================================================================
+-- CREATE RLS POLICIES FOR COMPLAINTS
+-- ============================================================================
 CREATE POLICY "Users can read own complaints" ON public.complaints
   FOR SELECT
   USING (user_id = auth.uid() OR email = auth.jwt() ->> 'email');
 
--- Users can insert complaints (with or without auth)
-DROP POLICY IF EXISTS "Anyone can submit complaint" ON public.complaints;
 CREATE POLICY "Anyone can submit complaint" ON public.complaints
   FOR INSERT
   WITH CHECK (true);
 
--- Users can update their own complaints
-DROP POLICY IF EXISTS "Users can update own complaints" ON public.complaints;
 CREATE POLICY "Users can update own complaints" ON public.complaints
   FOR UPDATE
   USING (user_id = auth.uid());
 
--- Managers can read all complaints
-DROP POLICY IF EXISTS "Managers can read all complaints" ON public.complaints;
 CREATE POLICY "Managers can read all complaints" ON public.complaints
   FOR SELECT
   USING (
@@ -118,8 +111,6 @@ CREATE POLICY "Managers can read all complaints" ON public.complaints
     )
   );
 
--- Managers can update all complaints
-DROP POLICY IF EXISTS "Managers can update all complaints" ON public.complaints;
 CREATE POLICY "Managers can update all complaints" ON public.complaints
   FOR UPDATE
   USING (
@@ -130,10 +121,8 @@ CREATE POLICY "Managers can update all complaints" ON public.complaints
   );
 
 -- ============================================================================
--- AUTOMATIC PROFILE CREATION ON SIGNUP (REPLACES MANUAL INSERT)
+-- AUTOMATIC PROFILE CREATION ON SIGNUP
 -- ============================================================================
-
--- Function to automatically create a profile row for new users
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -141,15 +130,14 @@ BEGIN
   VALUES (
     new.id,
     new.email,
-    'guest',  -- Default role is guest
-    '',       -- Empty first name (to be filled in later)
-    ''        -- Empty last name (to be filled in later)
+    'guest',
+    '',
+    ''
   );
   RETURN new;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Trigger that fires when a user signs up
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
@@ -157,10 +145,8 @@ CREATE TRIGGER on_auth_user_created
   EXECUTE FUNCTION public.handle_new_user();
 
 -- ============================================================================
--- TRIGGERS FOR UPDATED_AT TIMESTAMP
+-- UPDATED_AT TIMESTAMP FUNCTION AND TRIGGERS
 -- ============================================================================
-
--- Create function to update the updated_at field
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -169,14 +155,12 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Create trigger for user_profiles
 DROP TRIGGER IF EXISTS update_user_profiles_updated_at ON public.user_profiles;
 CREATE TRIGGER update_user_profiles_updated_at
   BEFORE UPDATE ON public.user_profiles
   FOR EACH ROW
   EXECUTE FUNCTION update_updated_at_column();
 
--- Create trigger for complaints
 DROP TRIGGER IF EXISTS update_complaints_updated_at ON public.complaints;
 CREATE TRIGGER update_complaints_updated_at
   BEFORE UPDATE ON public.complaints
@@ -184,17 +168,8 @@ CREATE TRIGGER update_complaints_updated_at
   EXECUTE FUNCTION update_updated_at_column();
 
 -- ============================================================================
--- SAMPLE DATA FOR TESTING
+-- SAMPLE COMPLAINTS DATA
 -- ============================================================================
--- NOTE: User profile samples are NO LONGER included here.
--- Profiles are automatically created when users sign up via Supabase Auth.
---
--- To test with user profiles:
--- 1. Use Supabase Auth to create test users
--- 2. Profiles will be automatically created
--- 3. Update profiles via the registration flow in the app
-
--- Insert sample complaints (no hard-coded user_id references)
 INSERT INTO public.complaints (
   id, user_id, guest_name, email, room_number, complaint_type, description, priority, status, attachments, created_at, updated_at
 ) VALUES (
@@ -204,7 +179,7 @@ INSERT INTO public.complaints (
   'john.doe@example.com',
   '301',
   'Maintenance Issue',
-  'The air conditioning in room 301 is not working properly. The temperature control is set to 72°F but the room is still very warm. This is affecting my comfort and sleep.',
+  'The air conditioning in room 301 is not working properly.',
   'urgent',
   'open',
   '[]'::jsonb,
@@ -221,7 +196,7 @@ INSERT INTO public.complaints (
   'sarah.johnson@example.com',
   '205',
   'Cleanliness',
-  'The bathroom had not been properly cleaned when we checked in. There were hairs in the sink and the towels were not fresh. We immediately requested housekeeping to come clean the room.',
+  'The bathroom had not been properly cleaned when we checked in.',
   'high',
   'in_progress',
   '[]'::jsonb,
@@ -238,7 +213,7 @@ INSERT INTO public.complaints (
   'michael.chen@example.com',
   '420',
   'Noise/Disturbance',
-  'There was excessive noise coming from the adjacent room late into the evening (past midnight). Despite requesting quiet hours, the noise continued. This significantly disrupted our sleep.',
+  'There was excessive noise coming from the adjacent room late into the evening.',
   'medium',
   'resolved',
   '[]'::jsonb,
@@ -255,7 +230,7 @@ INSERT INTO public.complaints (
   'emma.wilson@example.com',
   '315',
   'Missing Items',
-  'The room was missing several amenities that are typically provided: shower caps, sewing kits, and complimentary water bottles. These items are important for guest comfort.',
+  'The room was missing several amenities that are typically provided.',
   'low',
   'resolved',
   '[]'::jsonb,
@@ -285,7 +260,6 @@ CREATE TABLE IF NOT EXISTS public.tasks (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Create indexes for tasks
 CREATE INDEX IF NOT EXISTS idx_tasks_complaint_id ON public.tasks(complaint_id);
 CREATE INDEX IF NOT EXISTS idx_tasks_assigned_to ON public.tasks(assigned_to);
 CREATE INDEX IF NOT EXISTS idx_tasks_created_by ON public.tasks(created_by);
@@ -294,7 +268,7 @@ CREATE INDEX IF NOT EXISTS idx_tasks_priority ON public.tasks(priority);
 CREATE INDEX IF NOT EXISTS idx_tasks_created_at ON public.tasks(created_at DESC);
 
 -- ============================================================================
--- NOTIFICATIONS TABLE (For real-time manager notifications)
+-- NOTIFICATIONS TABLE
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS public.notifications (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -307,7 +281,6 @@ CREATE TABLE IF NOT EXISTS public.notifications (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Create indexes for notifications
 CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON public.notifications(user_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_complaint_id ON public.notifications(complaint_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_task_id ON public.notifications(task_id);
@@ -315,12 +288,22 @@ CREATE INDEX IF NOT EXISTS idx_notifications_is_read ON public.notifications(is_
 CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON public.notifications(created_at DESC);
 
 -- ============================================================================
--- RLS POLICIES FOR TASKS TABLE
+-- ENABLE RLS ON TASKS AND NOTIFICATIONS
 -- ============================================================================
 ALTER TABLE public.tasks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
 
--- Managers can read all tasks
 DROP POLICY IF EXISTS "Managers can read all tasks" ON public.tasks;
+DROP POLICY IF EXISTS "Managers can create tasks" ON public.tasks;
+DROP POLICY IF EXISTS "Managers can update all tasks" ON public.tasks;
+DROP POLICY IF EXISTS "Service providers can read assigned tasks" ON public.tasks;
+DROP POLICY IF EXISTS "Users can read own notifications" ON public.notifications;
+DROP POLICY IF EXISTS "System can insert notifications" ON public.notifications;
+DROP POLICY IF EXISTS "Users can update own notifications" ON public.notifications;
+
+-- ============================================================================
+-- RLS POLICIES FOR TASKS
+-- ============================================================================
 CREATE POLICY "Managers can read all tasks" ON public.tasks
   FOR SELECT
   USING (
@@ -330,8 +313,6 @@ CREATE POLICY "Managers can read all tasks" ON public.tasks
     )
   );
 
--- Managers can create tasks
-DROP POLICY IF EXISTS "Managers can create tasks" ON public.tasks;
 CREATE POLICY "Managers can create tasks" ON public.tasks
   FOR INSERT
   WITH CHECK (
@@ -341,8 +322,6 @@ CREATE POLICY "Managers can create tasks" ON public.tasks
     )
   );
 
--- Managers can update all tasks
-DROP POLICY IF EXISTS "Managers can update all tasks" ON public.tasks;
 CREATE POLICY "Managers can update all tasks" ON public.tasks
   FOR UPDATE
   USING (
@@ -352,8 +331,6 @@ CREATE POLICY "Managers can update all tasks" ON public.tasks
     )
   );
 
--- Service providers can read tasks assigned to them
-DROP POLICY IF EXISTS "Service providers can read assigned tasks" ON public.tasks;
 CREATE POLICY "Service providers can read assigned tasks" ON public.tasks
   FOR SELECT
   USING (
@@ -364,30 +341,22 @@ CREATE POLICY "Service providers can read assigned tasks" ON public.tasks
   );
 
 -- ============================================================================
--- RLS POLICIES FOR NOTIFICATIONS TABLE
+-- RLS POLICIES FOR NOTIFICATIONS
 -- ============================================================================
-ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
-
--- Users can read their own notifications
-DROP POLICY IF EXISTS "Users can read own notifications" ON public.notifications;
 CREATE POLICY "Users can read own notifications" ON public.notifications
   FOR SELECT
   USING (user_id = auth.uid());
 
--- System can insert notifications (via trigger)
-DROP POLICY IF EXISTS "System can insert notifications" ON public.notifications;
 CREATE POLICY "System can insert notifications" ON public.notifications
   FOR INSERT
   WITH CHECK (true);
 
--- Users can update their own notifications (mark as read)
-DROP POLICY IF EXISTS "Users can update own notifications" ON public.notifications;
 CREATE POLICY "Users can update own notifications" ON public.notifications
   FOR UPDATE
   USING (user_id = auth.uid());
 
 -- ============================================================================
--- TRIGGER FOR TASKS UPDATED_AT TIMESTAMP
+-- TASKS UPDATED_AT TRIGGER
 -- ============================================================================
 DROP TRIGGER IF EXISTS update_tasks_updated_at ON public.tasks;
 CREATE TRIGGER update_tasks_updated_at
@@ -396,12 +365,11 @@ CREATE TRIGGER update_tasks_updated_at
   EXECUTE FUNCTION update_updated_at_column();
 
 -- ============================================================================
--- FUNCTION TO NOTIFY MANAGERS OF NEW COMPLAINTS
+-- NOTIFICATION TRIGGERS
 -- ============================================================================
 CREATE OR REPLACE FUNCTION notify_managers_of_complaint()
 RETURNS TRIGGER AS $$
 BEGIN
-  -- Insert notification for all managers
   INSERT INTO public.notifications (user_id, complaint_id, type, message)
   SELECT
     up.user_id,
@@ -415,20 +383,15 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Trigger to notify managers when a new complaint is filed
 DROP TRIGGER IF EXISTS on_complaint_filed ON public.complaints;
 CREATE TRIGGER on_complaint_filed
   AFTER INSERT ON public.complaints
   FOR EACH ROW
   EXECUTE FUNCTION notify_managers_of_complaint();
 
--- ============================================================================
--- FUNCTION TO NOTIFY RELEVANT USERS OF NEW TASKS
--- ============================================================================
 CREATE OR REPLACE FUNCTION notify_on_task_created()
 RETURNS TRIGGER AS $$
 BEGIN
-  -- Notify the assigned person if it's a service provider task
   IF NEW.assigned_to IS NOT NULL THEN
     INSERT INTO public.notifications (user_id, task_id, type, message)
     SELECT
@@ -440,7 +403,6 @@ BEGIN
     WHERE up.id = NEW.assigned_to;
   END IF;
 
-  -- Notify all managers about new task
   INSERT INTO public.notifications (user_id, task_id, type, message)
   SELECT
     up.user_id,
@@ -454,40 +416,8 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- Trigger to notify users when a new task is created
 DROP TRIGGER IF EXISTS on_task_created ON public.tasks;
 CREATE TRIGGER on_task_created
   AFTER INSERT ON public.tasks
   FOR EACH ROW
   EXECUTE FUNCTION notify_on_task_created();
-
--- ============================================================================
--- SUMMARY
--- ============================================================================
--- Tables created:
---   1. user_profiles - Stores user data with multi-tenant role support
---      - Automatically populated via trigger on user signup
---      - Foreign key constraint maintains data integrity
---   2. complaints - Stores guest complaints with tracking and status management
---   3. tasks - Stores manager-created tasks, can be linked to complaints
---      - Can be assigned to internal staff or external contractors
---      - Tracks priority, status, and assignment
---   4. notifications - Real-time notification system for managers
---      - Automatically created when complaints are filed
---      - Automatically created when tasks are assigned
---
--- Automatic Features:
---   - User profiles created automatically on signup
---   - Managers notified when complaints are filed
---   - Users notified when tasks are assigned
---   - Timestamps automatically updated on record changes
---
--- RLS Policies:
---   - Users can manage their own data
---   - Managers have elevated access to view and manage complaints and tasks
---   - Public access for complaint submission (unauthenticated guests)
---   - Service providers can see tasks assigned to them
---
--- Sample Data:
---   - 4 Sample complaints with various statuses and priorities
---   - User profiles are created automatically when users sign up
