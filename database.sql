@@ -21,9 +21,9 @@ CREATE TABLE IF NOT EXISTS public.user_profiles (
 );
 
 -- Create index for faster lookups
-CREATE INDEX idx_user_profiles_email ON public.user_profiles(email);
-CREATE INDEX idx_user_profiles_role ON public.user_profiles(role);
-CREATE INDEX idx_user_profiles_user_id ON public.user_profiles(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_profiles_email ON public.user_profiles(email);
+CREATE INDEX IF NOT EXISTS idx_user_profiles_role ON public.user_profiles(role);
+CREATE INDEX IF NOT EXISTS idx_user_profiles_user_id ON public.user_profiles(user_id);
 
 -- ============================================================================
 -- COMPLAINTS TABLE
@@ -44,11 +44,11 @@ CREATE TABLE IF NOT EXISTS public.complaints (
 );
 
 -- Create indexes for complaints
-CREATE INDEX idx_complaints_user_id ON public.complaints(user_id);
-CREATE INDEX idx_complaints_email ON public.complaints(email);
-CREATE INDEX idx_complaints_status ON public.complaints(status);
-CREATE INDEX idx_complaints_priority ON public.complaints(priority);
-CREATE INDEX idx_complaints_created_at ON public.complaints(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_complaints_user_id ON public.complaints(user_id);
+CREATE INDEX IF NOT EXISTS idx_complaints_email ON public.complaints(email);
+CREATE INDEX IF NOT EXISTS idx_complaints_status ON public.complaints(status);
+CREATE INDEX IF NOT EXISTS idx_complaints_priority ON public.complaints(priority);
+CREATE INDEX IF NOT EXISTS idx_complaints_created_at ON public.complaints(created_at DESC);
 
 -- ============================================================================
 -- ROW LEVEL SECURITY (RLS) POLICIES
@@ -59,6 +59,12 @@ ALTER TABLE public.user_profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.complaints ENABLE ROW LEVEL SECURITY;
 
 -- User Profiles RLS Policies
+-- Drop existing policies first
+DROP POLICY IF EXISTS "Users can read own profile" ON public.user_profiles;
+DROP POLICY IF EXISTS "Users can update own profile" ON public.user_profiles;
+DROP POLICY IF EXISTS "Users can insert own profile" ON public.user_profiles;
+DROP POLICY IF EXISTS "Managers can read all profiles" ON public.user_profiles;
+
 -- Users can read their own profile
 CREATE POLICY "Users can read own profile" ON public.user_profiles
   FOR SELECT
@@ -264,20 +270,25 @@ CREATE TABLE IF NOT EXISTS public.tasks (
   description TEXT NOT NULL,
   priority VARCHAR(20) NOT NULL DEFAULT 'medium' CHECK (priority IN ('low', 'medium', 'high', 'urgent')),
   status VARCHAR(50) NOT NULL DEFAULT 'todo' CHECK (status IN ('todo', 'in_progress', 'in_review', 'completed')),
+  category VARCHAR(50) CHECK (category IN ('operations', 'service', 'training', 'maintenance')),
   assigned_to UUID REFERENCES public.user_profiles(id) ON DELETE SET NULL,
+  assignee_name VARCHAR(255),
   assigned_category VARCHAR(50) CHECK (assigned_category IN ('internal', 'external')),
+  due_date DATE,
+  estimated_time VARCHAR(50),
+  payment_terms TEXT,
   created_by UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 -- Create indexes for tasks
-CREATE INDEX idx_tasks_complaint_id ON public.tasks(complaint_id);
-CREATE INDEX idx_tasks_assigned_to ON public.tasks(assigned_to);
-CREATE INDEX idx_tasks_created_by ON public.tasks(created_by);
-CREATE INDEX idx_tasks_status ON public.tasks(status);
-CREATE INDEX idx_tasks_priority ON public.tasks(priority);
-CREATE INDEX idx_tasks_created_at ON public.tasks(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_tasks_complaint_id ON public.tasks(complaint_id);
+CREATE INDEX IF NOT EXISTS idx_tasks_assigned_to ON public.tasks(assigned_to);
+CREATE INDEX IF NOT EXISTS idx_tasks_created_by ON public.tasks(created_by);
+CREATE INDEX IF NOT EXISTS idx_tasks_status ON public.tasks(status);
+CREATE INDEX IF NOT EXISTS idx_tasks_priority ON public.tasks(priority);
+CREATE INDEX IF NOT EXISTS idx_tasks_created_at ON public.tasks(created_at DESC);
 
 -- ============================================================================
 -- NOTIFICATIONS TABLE (For real-time manager notifications)
@@ -294,11 +305,11 @@ CREATE TABLE IF NOT EXISTS public.notifications (
 );
 
 -- Create indexes for notifications
-CREATE INDEX idx_notifications_user_id ON public.notifications(user_id);
-CREATE INDEX idx_notifications_complaint_id ON public.notifications(complaint_id);
-CREATE INDEX idx_notifications_task_id ON public.notifications(task_id);
-CREATE INDEX idx_notifications_is_read ON public.notifications(is_read);
-CREATE INDEX idx_notifications_created_at ON public.notifications(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON public.notifications(user_id);
+CREATE INDEX IF NOT EXISTS idx_notifications_complaint_id ON public.notifications(complaint_id);
+CREATE INDEX IF NOT EXISTS idx_notifications_task_id ON public.notifications(task_id);
+CREATE INDEX IF NOT EXISTS idx_notifications_is_read ON public.notifications(is_read);
+CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON public.notifications(created_at DESC);
 
 -- ============================================================================
 -- RLS POLICIES FOR TASKS TABLE

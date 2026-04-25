@@ -50,7 +50,7 @@ const Header = () => {
 
   // Load notifications for current user
   useEffect(() => {
-    const loadNotifications = async () => {
+    const initNotifications = async () => {
       try {
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) {
@@ -69,6 +69,35 @@ const Header = () => {
 
         setNotifications(data || []);
         setUnreadCount((data || []).filter((n) => !n.is_read).length);
+
+        // Subscribe to real-time notifications
+        const subscription = supabase
+          .channel(`notifications:${user.id}`)
+          .on(
+            "postgres_changes",
+            {
+              event: "INSERT",
+              schema: "public",
+              table: "notifications",
+              filter: `user_id=eq.${user.id}`,
+            },
+            (payload) => {
+              const newNotification = payload.new as Notification;
+              setNotifications((prev) => [newNotification, ...prev]);
+              setUnreadCount((prev) => prev + 1);
+              // Show toast for new notification
+              toast({
+                title: "New Notification",
+                description: newNotification.message,
+                duration: 4,
+              });
+            }
+          )
+          .subscribe();
+
+        return () => {
+          subscription.unsubscribe();
+        };
       } catch (error) {
         console.error("Error loading notifications:", error);
       } finally {
@@ -76,38 +105,12 @@ const Header = () => {
       }
     };
 
-    loadNotifications();
-
-    // Subscribe to real-time notifications
-    const { data: { user: currentUser } } = await supabase.auth.getUser();
-    if (!currentUser) return;
-
-    const subscription = supabase
-      .channel(`notifications:${currentUser.id}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "notifications",
-          filter: `user_id=eq.${currentUser.id}`,
-        },
-        (payload) => {
-          const newNotification = payload.new as Notification;
-          setNotifications((prev) => [newNotification, ...prev]);
-          setUnreadCount((prev) => prev + 1);
-          // Show toast for new notification
-          toast({
-            title: "New Notification",
-            description: newNotification.message,
-            duration: 4,
-          });
-        }
-      )
-      .subscribe();
+    const unsubscribe = initNotifications();
 
     return () => {
-      subscription.unsubscribe();
+      unsubscribe.then((cleanup) => {
+        if (cleanup) cleanup();
+      });
     };
   }, []);
 

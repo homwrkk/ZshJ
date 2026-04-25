@@ -102,6 +102,8 @@ const TasksPage: React.FC = () => {
   const [complaints, setComplaints] = useState<Complaint[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [currentUser, setCurrentUser] = useState<any>(null);
+  const [internalStaff, setInternalStaff] = useState<any[]>([]);
+  const [externalVendors, setExternalVendors] = useState<any[]>([]);
 
   // Sync URL with tab changes
   useEffect(() => {
@@ -116,7 +118,7 @@ const TasksPage: React.FC = () => {
     else if (tab === "live-chat") navigate("/tasks/chat");
   };
 
-  // Load user, complaints, and tasks from Supabase
+  // Load user, complaints, tasks, and assignees from Supabase
   useEffect(() => {
     const loadData = async () => {
       try {
@@ -127,6 +129,24 @@ const TasksPage: React.FC = () => {
           data: { user },
         } = await supabase.auth.getUser();
         setCurrentUser(user);
+
+        // Load internal staff (service_category = 'internal')
+        const { data: internalData, error: internalError } = await supabase
+          .from("user_profiles")
+          .select("id, email, first_name, last_name, service_type, role")
+          .eq("service_category", "internal");
+
+        if (internalError) throw internalError;
+        setInternalStaff(internalData || []);
+
+        // Load external vendors (service_category = 'external')
+        const { data: externalData, error: externalError } = await supabase
+          .from("user_profiles")
+          .select("id, email, first_name, last_name, service_type, role")
+          .eq("service_category", "external");
+
+        if (externalError) throw externalError;
+        setExternalVendors(externalData || []);
 
         // Load complaints (for managers to convert to tasks)
         const { data: complaintsData, error: complaintsError } = await supabase
@@ -245,7 +265,7 @@ const TasksPage: React.FC = () => {
   };
 
   const handleCreateTask = async () => {
-    if (!formData.title || !formData.priority || !formData.assignmentType) {
+    if (!formData.title || !formData.priority || !formData.assignmentType || !formData.assignee) {
       toast({
         title: "Validation Error",
         description: "Please fill in all required fields",
@@ -256,24 +276,37 @@ const TasksPage: React.FC = () => {
 
     setIsSubmitting(true);
     try {
+      // Find the assigned user ID from the selected assignee
+      const assignees = formData.assignmentType === "internal" ? internalStaff : externalVendors;
+      const selectedAssignee = assignees.find(
+        (a) => `${a.first_name} ${a.last_name} - ${a.service_type}` === formData.assignee ||
+               `${a.email}` === formData.assignee
+      );
+
       // Create task in Supabase
-      const { data, error } = await supabase.from("tasks").insert([
-        {
-          complaint_id: selectedComplaint?.id || null,
-          title: formData.title,
-          description: formData.description,
-          priority: formData.priority as "low" | "medium" | "high" | "urgent",
-          status: "todo",
-          assigned_category: formData.assignmentType as "internal" | "external",
-          created_by: currentUser?.id,
-        },
-      ]);
+      const taskData = {
+        complaint_id: selectedComplaint?.id || null,
+        title: formData.title,
+        description: formData.description,
+        priority: formData.priority as "low" | "medium" | "high" | "urgent",
+        category: (formData.category as "operations" | "service" | "training" | "maintenance") || null,
+        status: "todo",
+        assigned_to: selectedAssignee?.id || null,
+        assignee_name: formData.assignee,
+        assigned_category: formData.assignmentType as "internal" | "external",
+        due_date: formData.dueDate || null,
+        estimated_time: formData.estimatedTime || null,
+        payment_terms: formData.paymentTerms || null,
+        created_by: currentUser?.id,
+      };
+
+      const { error } = await supabase.from("tasks").insert([taskData]);
 
       if (error) throw error;
 
       toast({
         title: "Success",
-        description: "Task created successfully!",
+        description: `Task created and assigned to ${formData.assignee}!`,
       });
 
       // Reload tasks
@@ -626,13 +659,32 @@ const TasksPage: React.FC = () => {
                         <Label>Assign To *</Label>
                         <Select value={formData.assignee} onValueChange={(value) => handleFormChange("assignee", value)}>
                           <SelectTrigger>
-                            <SelectValue placeholder="Select assignee" />
+                            <SelectValue placeholder={formData.assignmentType ? "Select assignee" : "First select assignment type"} />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="John Smith - Maintenance">John Smith - Maintenance</SelectItem>
-                            <SelectItem value="Sarah Johnson - Housekeeping">Sarah Johnson - Housekeeping</SelectItem>
-                            <SelectItem value="ABC Plumbing - Plumbing">ABC Plumbing - Plumbing</SelectItem>
-                            <SelectItem value="XYZ Electric - Electrical">XYZ Electric - Electrical</SelectItem>
+                            {formData.assignmentType === "internal"
+                              ? internalStaff.length > 0
+                                ? internalStaff.map((staff) => (
+                                    <SelectItem
+                                      key={staff.id}
+                                      value={`${staff.first_name} ${staff.last_name} - ${staff.service_type}`}
+                                    >
+                                      {staff.first_name} {staff.last_name} ({staff.service_type})
+                                    </SelectItem>
+                                  ))
+                                : <SelectItem value="" disabled>No internal staff available</SelectItem>
+                              : formData.assignmentType === "external"
+                                ? externalVendors.length > 0
+                                  ? externalVendors.map((vendor) => (
+                                      <SelectItem
+                                        key={vendor.id}
+                                        value={`${vendor.first_name} ${vendor.last_name} - ${vendor.service_type}`}
+                                      >
+                                        {vendor.first_name} {vendor.last_name} ({vendor.service_type})
+                                      </SelectItem>
+                                    ))
+                                  : <SelectItem value="" disabled>No external vendors available</SelectItem>
+                                : <SelectItem value="" disabled>Select assignment type first</SelectItem>}
                           </SelectContent>
                         </Select>
                       </div>
@@ -830,22 +882,36 @@ const TasksPage: React.FC = () => {
 
                     {/* Task Details Grid */}
                     <div className="space-y-3 mb-5 text-sm">
-                      {task.assignedTo && (
+                      {task.category && (
                         <div className="flex justify-between items-center">
-                          <span className="text-gray-500 text-xs font-medium">ASSIGNED</span>
-                          <span className="font-semibold text-gray-900">{task.assignedTo}</span>
+                          <span className="text-gray-500 text-xs font-medium">CATEGORY</span>
+                          <span className="font-semibold text-gray-900 capitalize">{task.category}</span>
                         </div>
                       )}
-                      {task.dueDate && (
+                      {task.assignee_name && (
                         <div className="flex justify-between items-center">
-                          <span className="text-gray-500 text-xs font-medium">DUE</span>
-                          <span className="font-semibold text-gray-900">{task.dueDate}</span>
+                          <span className="text-gray-500 text-xs font-medium">ASSIGNED TO</span>
+                          <span className="font-semibold text-gray-900">{task.assignee_name}</span>
                         </div>
                       )}
-                      {task.estimatedTime && (
+                      {task.due_date && (
                         <div className="flex justify-between items-center">
-                          <span className="text-gray-500 text-xs font-medium">ESTIMATE</span>
-                          <span className="font-semibold text-gray-900">{task.estimatedTime}</span>
+                          <span className="text-gray-500 text-xs font-medium">DUE DATE</span>
+                          <span className="font-semibold text-gray-900">{new Date(task.due_date).toLocaleDateString()}</span>
+                        </div>
+                      )}
+                      {task.estimated_time && (
+                        <div className="flex justify-between items-center">
+                          <span className="text-gray-500 text-xs font-medium">EST. TIME</span>
+                          <span className="font-semibold text-gray-900">{task.estimated_time}</span>
+                        </div>
+                      )}
+                      {task.assigned_category && (
+                        <div className="flex justify-between items-center">
+                          <span className="text-gray-500 text-xs font-medium">TYPE</span>
+                          <Badge className={task.assigned_category === "internal" ? "bg-blue-100 text-blue-800" : "bg-purple-100 text-purple-800"}>
+                            {task.assigned_category === "internal" ? "Internal" : "External"}
+                          </Badge>
                         </div>
                       )}
                       <div className="flex justify-between items-center">
