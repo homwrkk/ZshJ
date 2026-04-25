@@ -305,22 +305,22 @@ const ProfilePage = () => {
     <div className="min-h-screen bg-gradient-to-b from-sheraton-cream to-background">
       <div className="container py-8">
         {/* Header */}
-        {dataLoaded && (
-          <div className="text-center mb-8">
-            <div className="flex items-center justify-center mb-4">
-              <Crown className="h-8 w-8 text-sheraton-gold mr-2" />
-              <Badge className="bg-sheraton-gold text-sheraton-navy px-4 py-2">
-                Special Guest Member
-              </Badge>
-            </div>
+        <div className="text-center mb-8">
+          <div className="flex items-center justify-center mb-4">
+            <Crown className="h-8 w-8 text-sheraton-gold mr-2" />
+            <Badge className="bg-sheraton-gold text-sheraton-navy px-4 py-2">
+              Special Guest Member
+            </Badge>
+          </div>
+          {userData.firstName && (
             <h1 className="text-4xl md:text-5xl font-bold text-sheraton-navy mb-4">
               Welcome back, {userData.firstName}!
             </h1>
-            <p className="text-lg text-muted-foreground">
-              Your special journey continues • {loyaltyData.currentTier} Member
-            </p>
-          </div>
-        )}
+          )}
+          <p className="text-lg text-muted-foreground">
+            Your special journey continues • {loyaltyData.currentTier} Member
+          </p>
+        </div>
 
         <Tabs
           value={activeTab}
