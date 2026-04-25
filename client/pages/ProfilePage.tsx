@@ -74,6 +74,7 @@ const ProfilePage = () => {
   const [activeTab, setActiveTab] = useState("dashboard");
   const [isEditing, setIsEditing] = useState(false);
   const [showLoyaltyDetails, setShowLoyaltyDetails] = useState(false);
+  const [dataLoaded, setDataLoaded] = useState(false);
 
   // User data from database
   const [userData, setUserData] = useState({
@@ -128,6 +129,7 @@ const ProfilePage = () => {
             memberSince: profile.created_at ? profile.created_at.split('T')[0] : new Date().toISOString().split('T')[0],
             profilePicture: profile.profile_picture || "",
           }));
+          setDataLoaded(true);
         }
       } catch (error) {
         navigate("/login");
