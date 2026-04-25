@@ -46,8 +46,13 @@ export interface Task {
   description: string
   priority: 'low' | 'medium' | 'high' | 'urgent'
   status: 'todo' | 'in_progress' | 'in_review' | 'completed'
+  category: 'operations' | 'service' | 'training' | 'maintenance' | null
   assigned_to: string | null
+  assignee_name: string | null
   assigned_category: 'internal' | 'external' | null
+  due_date: string | null
+  estimated_time: string | null
+  payment_terms: string | null
   created_by: string
   created_at: string
   updated_at: string

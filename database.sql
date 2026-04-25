@@ -264,8 +264,13 @@ CREATE TABLE IF NOT EXISTS public.tasks (
   description TEXT NOT NULL,
   priority VARCHAR(20) NOT NULL DEFAULT 'medium' CHECK (priority IN ('low', 'medium', 'high', 'urgent')),
   status VARCHAR(50) NOT NULL DEFAULT 'todo' CHECK (status IN ('todo', 'in_progress', 'in_review', 'completed')),
+  category VARCHAR(50) CHECK (category IN ('operations', 'service', 'training', 'maintenance')),
   assigned_to UUID REFERENCES public.user_profiles(id) ON DELETE SET NULL,
+  assignee_name VARCHAR(255),
   assigned_category VARCHAR(50) CHECK (assigned_category IN ('internal', 'external')),
+  due_date DATE,
+  estimated_time VARCHAR(50),
+  payment_terms TEXT,
   created_by UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
